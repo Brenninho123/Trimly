@@ -1,6 +1,8 @@
 package com.brenninho.trimly.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.brenninho.trimly.model.Adjustment
+import com.brenninho.trimly.model.VideoFilter
 import java.util.Locale
 
 enum class AppLanguage(val code: String, val nativeName: String) {
@@ -140,6 +142,64 @@ interface AppStrings {
     val aboutTitle: String
     val aboutBody: String
     fun versionLabel(version: String): String
+
+    val editorTitle: String
+    val back: String
+    val redo: String
+    val export: String
+    val discardTitle: String
+    val discardBody: String
+    val discardConfirm: String
+    val keepEditing: String
+    val play: String
+    val pause: String
+    val collapseMenu: String
+    val expandMenu: String
+    val catEdit: String
+    val catStyle: String
+    val catAudio: String
+    val catOutput: String
+    val flip: String
+    val split: String
+    val mute: String
+    val unmute: String
+    val muted: String
+    val volume: String
+    val fade: String
+    val resetAll: String
+    val goToStart: String
+    val back5: String
+    val forward5: String
+    val goToEnd: String
+    val loopOn: String
+    val loopOff: String
+    val lengthLabel: String
+    val setStart: String
+    val setEnd: String
+    val holdCompare: String
+    val done: String
+    val intensity: String
+    val pickOne: String
+    val noIntensity: String
+    val resetAdjustments: String
+    val exporting: String
+    val exportingHint: String
+    val exportComplete: String
+    val share: String
+    val openVideo: String
+    val exportFailed: String
+    val exportFailedHint: String
+    val qualityTitle: String
+    val qualityOriginal: String
+    val qualityUnavailable: String
+    fun rotateLabel(degrees: Int): String
+    fun startSetTo(time: String): String
+    fun endSetTo(time: String): String
+    fun chipTrim(time: String): String
+    fun removeChip(label: String): String
+    fun savedTo(location: String): String
+    fun filterName(filter: VideoFilter): String
+    fun adjustmentName(kind: Adjustment): String
 }
 
 object EnglishStrings : AppStrings {
@@ -274,6 +334,87 @@ object EnglishStrings : AppStrings {
     override val aboutTitle = "About"
     override val aboutBody = "A free video editor that runs entirely on your device. No account, no upload, no watermark."
     override fun versionLabel(version: String) = "Version $version"
+
+    override val editorTitle = "Editor"
+    override val back = "Back"
+    override val redo = "Redo"
+    override val export = "Export"
+    override val discardTitle = "Discard changes?"
+    override val discardBody = "Your trim and edits will be lost."
+    override val discardConfirm = "Discard"
+    override val keepEditing = "Keep editing"
+    override val play = "Play"
+    override val pause = "Pause"
+    override val collapseMenu = "Collapse menu"
+    override val expandMenu = "Expand menu"
+    override val catEdit = "Edit"
+    override val catStyle = "Style"
+    override val catAudio = "Audio"
+    override val catOutput = "Output"
+    override val flip = "Flip"
+    override val split = "Split"
+    override val mute = "Mute"
+    override val unmute = "Unmute"
+    override val muted = "Muted"
+    override val volume = "Volume"
+    override val fade = "Fade"
+    override val resetAll = "Reset all"
+    override val goToStart = "Go to start"
+    override val back5 = "Back 5 seconds"
+    override val forward5 = "Forward 5 seconds"
+    override val goToEnd = "Go to end"
+    override val loopOn = "Loop on"
+    override val loopOff = "Loop off"
+    override val lengthLabel = "Length"
+    override val setStart = "Set start"
+    override val setEnd = "Set end"
+    override val holdCompare = "Hold to compare"
+    override val done = "Done"
+    override val intensity = "Intensity"
+    override val pickOne = "Pick one to apply it"
+    override val noIntensity = "This effect has no intensity"
+    override val resetAdjustments = "Reset adjustments"
+    override val exporting = "Exporting"
+    override val exportingHint = "Applying your edits…"
+    override val exportComplete = "Export complete"
+    override val share = "Share"
+    override val openVideo = "Open"
+    override val exportFailed = "Export failed"
+    override val exportFailedHint = "Something went wrong while exporting. Try again."
+    override val qualityTitle = "Export quality"
+    override val qualityOriginal = "Original"
+    override val qualityUnavailable = "Lower resolutions are not available for this video."
+    override fun rotateLabel(degrees: Int) = "Rotate ${degrees}°"
+    override fun startSetTo(time: String) = "Start set to $time"
+    override fun endSetTo(time: String) = "End set to $time"
+    override fun chipTrim(time: String) = "Trim $time"
+    override fun removeChip(label: String) = "Remove $label"
+    override fun savedTo(location: String) = "Saved to $location"
+    override fun filterName(filter: VideoFilter): String = when (filter) {
+        VideoFilter.NONE -> "Original"
+        VideoFilter.WARM -> "Warm"
+        VideoFilter.COOL -> "Cool"
+        VideoFilter.VIVID -> "Vivid"
+        VideoFilter.FADED -> "Faded"
+        VideoFilter.VINTAGE -> "Vintage"
+        VideoFilter.SEPIA -> "Sepia"
+        VideoFilter.CINEMATIC -> "Cinematic"
+        VideoFilter.BLACK_WHITE -> "B&W"
+        VideoFilter.NOIR -> "Noir"
+        VideoFilter.NEON -> "Neon"
+        VideoFilter.DREAM -> "Dream"
+        VideoFilter.CHROME -> "Chrome"
+        VideoFilter.SUNSET -> "Sunset"
+        VideoFilter.FROST -> "Frost"
+        VideoFilter.NIGHT_VISION -> "Night"
+        VideoFilter.INVERT -> "Invert"
+    }
+    override fun adjustmentName(kind: Adjustment): String = when (kind) {
+        Adjustment.BRIGHTNESS -> "Brightness"
+        Adjustment.CONTRAST -> "Contrast"
+        Adjustment.SATURATION -> "Saturation"
+        Adjustment.WARMTH -> "Warmth"
+    }
 }
 
 object PortugueseStrings : AppStrings {
@@ -408,6 +549,87 @@ object PortugueseStrings : AppStrings {
     override val aboutTitle = "Sobre"
     override val aboutBody = "Um editor de vídeo gratuito que roda inteiramente no seu aparelho. Sem conta, sem upload, sem marca d'água."
     override fun versionLabel(version: String) = "Versão $version"
+
+    override val editorTitle = "Editor"
+    override val back = "Voltar"
+    override val redo = "Refazer"
+    override val export = "Exportar"
+    override val discardTitle = "Descartar alterações?"
+    override val discardBody = "Seu corte e suas edições serão perdidos."
+    override val discardConfirm = "Descartar"
+    override val keepEditing = "Continuar editando"
+    override val play = "Reproduzir"
+    override val pause = "Pausar"
+    override val collapseMenu = "Recolher menu"
+    override val expandMenu = "Expandir menu"
+    override val catEdit = "Editar"
+    override val catStyle = "Estilo"
+    override val catAudio = "Áudio"
+    override val catOutput = "Saída"
+    override val flip = "Espelhar"
+    override val split = "Dividir"
+    override val mute = "Silenciar"
+    override val unmute = "Ativar som"
+    override val muted = "Sem som"
+    override val volume = "Volume"
+    override val fade = "Esmaecer"
+    override val resetAll = "Redefinir tudo"
+    override val goToStart = "Ir para o início"
+    override val back5 = "Voltar 5 segundos"
+    override val forward5 = "Avançar 5 segundos"
+    override val goToEnd = "Ir para o fim"
+    override val loopOn = "Repetição ativada"
+    override val loopOff = "Repetição desativada"
+    override val lengthLabel = "Duração"
+    override val setStart = "Definir início"
+    override val setEnd = "Definir fim"
+    override val holdCompare = "Segure para comparar"
+    override val done = "Concluir"
+    override val intensity = "Intensidade"
+    override val pickOne = "Escolha um para aplicar"
+    override val noIntensity = "Este efeito não tem intensidade"
+    override val resetAdjustments = "Redefinir ajustes"
+    override val exporting = "Exportando"
+    override val exportingHint = "Aplicando suas edições…"
+    override val exportComplete = "Exportação concluída"
+    override val share = "Compartilhar"
+    override val openVideo = "Abrir"
+    override val exportFailed = "Falha na exportação"
+    override val exportFailedHint = "Algo deu errado ao exportar. Tente novamente."
+    override val qualityTitle = "Qualidade da exportação"
+    override val qualityOriginal = "Original"
+    override val qualityUnavailable = "Resoluções menores não estão disponíveis para este vídeo."
+    override fun rotateLabel(degrees: Int) = "Girar ${degrees}°"
+    override fun startSetTo(time: String) = "Início definido em $time"
+    override fun endSetTo(time: String) = "Fim definido em $time"
+    override fun chipTrim(time: String) = "Corte $time"
+    override fun removeChip(label: String) = "Remover $label"
+    override fun savedTo(location: String) = "Salvo em $location"
+    override fun filterName(filter: VideoFilter): String = when (filter) {
+        VideoFilter.NONE -> "Original"
+        VideoFilter.WARM -> "Quente"
+        VideoFilter.COOL -> "Frio"
+        VideoFilter.VIVID -> "Vívido"
+        VideoFilter.FADED -> "Desbotado"
+        VideoFilter.VINTAGE -> "Vintage"
+        VideoFilter.SEPIA -> "Sépia"
+        VideoFilter.CINEMATIC -> "Cinemático"
+        VideoFilter.BLACK_WHITE -> "P&B"
+        VideoFilter.NOIR -> "Noir"
+        VideoFilter.NEON -> "Neon"
+        VideoFilter.DREAM -> "Sonho"
+        VideoFilter.CHROME -> "Cromado"
+        VideoFilter.SUNSET -> "Entardecer"
+        VideoFilter.FROST -> "Gelo"
+        VideoFilter.NIGHT_VISION -> "Noturno"
+        VideoFilter.INVERT -> "Inverter"
+    }
+    override fun adjustmentName(kind: Adjustment): String = when (kind) {
+        Adjustment.BRIGHTNESS -> "Brilho"
+        Adjustment.CONTRAST -> "Contraste"
+        Adjustment.SATURATION -> "Saturação"
+        Adjustment.WARMTH -> "Temperatura"
+    }
 }
 
 object SpanishStrings : AppStrings {
@@ -542,6 +764,87 @@ object SpanishStrings : AppStrings {
     override val aboutTitle = "Acerca de"
     override val aboutBody = "Un editor de video gratuito que funciona por completo en tu dispositivo. Sin cuenta, sin subidas, sin marca de agua."
     override fun versionLabel(version: String) = "Versión $version"
+
+    override val editorTitle = "Editor"
+    override val back = "Atrás"
+    override val redo = "Rehacer"
+    override val export = "Exportar"
+    override val discardTitle = "¿Descartar cambios?"
+    override val discardBody = "Se perderán tu recorte y tus ediciones."
+    override val discardConfirm = "Descartar"
+    override val keepEditing = "Seguir editando"
+    override val play = "Reproducir"
+    override val pause = "Pausar"
+    override val collapseMenu = "Contraer menú"
+    override val expandMenu = "Expandir menú"
+    override val catEdit = "Editar"
+    override val catStyle = "Estilo"
+    override val catAudio = "Audio"
+    override val catOutput = "Salida"
+    override val flip = "Voltear"
+    override val split = "Dividir"
+    override val mute = "Silenciar"
+    override val unmute = "Activar sonido"
+    override val muted = "Sin sonido"
+    override val volume = "Volumen"
+    override val fade = "Fundido"
+    override val resetAll = "Restablecer todo"
+    override val goToStart = "Ir al inicio"
+    override val back5 = "Retroceder 5 segundos"
+    override val forward5 = "Avanzar 5 segundos"
+    override val goToEnd = "Ir al final"
+    override val loopOn = "Repetición activada"
+    override val loopOff = "Repetición desactivada"
+    override val lengthLabel = "Duración"
+    override val setStart = "Fijar inicio"
+    override val setEnd = "Fijar final"
+    override val holdCompare = "Mantén para comparar"
+    override val done = "Listo"
+    override val intensity = "Intensidad"
+    override val pickOne = "Elige uno para aplicarlo"
+    override val noIntensity = "Este efecto no tiene intensidad"
+    override val resetAdjustments = "Restablecer ajustes"
+    override val exporting = "Exportando"
+    override val exportingHint = "Aplicando tus ediciones…"
+    override val exportComplete = "Exportación completada"
+    override val share = "Compartir"
+    override val openVideo = "Abrir"
+    override val exportFailed = "Error al exportar"
+    override val exportFailedHint = "Algo salió mal al exportar. Inténtalo de nuevo."
+    override val qualityTitle = "Calidad de exportación"
+    override val qualityOriginal = "Original"
+    override val qualityUnavailable = "No hay resoluciones menores disponibles para este video."
+    override fun rotateLabel(degrees: Int) = "Girar ${degrees}°"
+    override fun startSetTo(time: String) = "Inicio fijado en $time"
+    override fun endSetTo(time: String) = "Final fijado en $time"
+    override fun chipTrim(time: String) = "Recorte $time"
+    override fun removeChip(label: String) = "Quitar $label"
+    override fun savedTo(location: String) = "Guardado en $location"
+    override fun filterName(filter: VideoFilter): String = when (filter) {
+        VideoFilter.NONE -> "Original"
+        VideoFilter.WARM -> "Cálido"
+        VideoFilter.COOL -> "Frío"
+        VideoFilter.VIVID -> "Vívido"
+        VideoFilter.FADED -> "Desvaído"
+        VideoFilter.VINTAGE -> "Vintage"
+        VideoFilter.SEPIA -> "Sepia"
+        VideoFilter.CINEMATIC -> "Cinemático"
+        VideoFilter.BLACK_WHITE -> "B/N"
+        VideoFilter.NOIR -> "Noir"
+        VideoFilter.NEON -> "Neón"
+        VideoFilter.DREAM -> "Sueño"
+        VideoFilter.CHROME -> "Cromo"
+        VideoFilter.SUNSET -> "Atardecer"
+        VideoFilter.FROST -> "Escarcha"
+        VideoFilter.NIGHT_VISION -> "Nocturno"
+        VideoFilter.INVERT -> "Invertir"
+    }
+    override fun adjustmentName(kind: Adjustment): String = when (kind) {
+        Adjustment.BRIGHTNESS -> "Brillo"
+        Adjustment.CONTRAST -> "Contraste"
+        Adjustment.SATURATION -> "Saturación"
+        Adjustment.WARMTH -> "Calidez"
+    }
 }
 
 fun stringsFor(language: AppLanguage): AppStrings {
