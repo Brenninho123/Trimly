@@ -5,12 +5,16 @@ import androidx.compose.runtime.Composable
 import com.brenninho.trimly.MainState
 import com.brenninho.trimly.data.RecentVideo
 import com.brenninho.trimly.editor.EditorScreen
+import com.brenninho.trimly.settings.SettingsActions
+import com.brenninho.trimly.settings.SettingsState
 
 @Composable
 fun TrimlyApp(
     state: MainState,
     recents: List<RecentVideo>,
     gridMode: Boolean,
+    settings: SettingsState,
+    actions: SettingsActions,
     onPick: (Uri) -> Unit,
     onOpenRecent: (RecentVideo) -> Unit,
     onRemoveRecent: (RecentVideo) -> Unit,
@@ -25,6 +29,8 @@ fun TrimlyApp(
             state = state,
             recents = recents,
             gridMode = gridMode,
+            settings = settings,
+            actions = actions,
             onPick = onPick,
             onOpenRecent = onOpenRecent,
             onRemoveRecent = onRemoveRecent,
