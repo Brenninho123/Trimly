@@ -14,13 +14,21 @@ import android.view.Gravity
 import android.view.TextureView
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,16 +38,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Redo
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -49,20 +62,25 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -76,10 +94,14 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.brenninho.trimly.data.FrameExtractor
 import com.brenninho.trimly.model.Clip
 import com.brenninho.trimly.model.ColorMath
+import com.brenninho.trimly.model.VideoFilter
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val FRAME_COUNT = 10
+private const val SEEK_STEP_MS = 5000L
 
 @Composable
 fun EditorScreen(
@@ -88,6 +110,9 @@ fun EditorScreen(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
     val application = context.applicationContext as Application
     val viewModel: EditorViewModel = viewModel(
         key = clip.uri.toString(),
@@ -99,7 +124,8 @@ fun EditorScreen(
     val trimStart = state.clip.startMs
     val trimEnd = state.clip.endMs
     val trimmed = state.clip.trimmedDurationMs
-    val exporting = state.export is ExportStatus.Running
+    val exportStatus = state.export
+    val exporting = exportStatus is ExportStatus.Running
 
     val exoPlayer = remember(clip.uri) {
         ExoPlayer.Builder(context).build().apply {
@@ -109,15 +135,26 @@ fun EditorScreen(
     }
 
     var playing by remember { mutableStateOf(false) }
+    var buffering by remember { mutableStateOf(true) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var videoAspect by remember { mutableFloatStateOf(16f / 9f) }
+    var looping by rememberSaveable { mutableStateOf(false) }
+    var compareHeld by remember { mutableStateOf(false) }
     var showQuality by remember { mutableStateOf(false) }
     var showDiscard by remember { mutableStateOf(false) }
     var panel by remember { mutableStateOf<PanelTab?>(null) }
+    var lastPanel by remember { mutableStateOf(PanelTab.FILTERS) }
+    var menuCategoryIndex by rememberSaveable { mutableIntStateOf(0) }
+    var menuExpanded by rememberSaveable { mutableStateOf(true) }
+    var flashDirection by remember { mutableIntStateOf(0) }
+    var flashTick by remember { mutableIntStateOf(0) }
 
+    val menuCategory = MenuCategory.entries[menuCategoryIndex.coerceIn(0, MenuCategory.entries.lastIndex)]
     val range by rememberUpdatedState(trimStart to trimEnd)
+    val loopEnabled by rememberUpdatedState(looping)
     val layerPaint = remember { Paint() }
     val previewMatrix = remember(options) { ColorMath.combined(options) }
+    val shownMatrix = if (compareHeld) null else previewMatrix
 
     val frames = remember(clip.uri) {
         mutableStateListOf<ImageBitmap?>().apply { repeat(FRAME_COUNT) { add(null) } }
@@ -127,6 +164,14 @@ fun EditorScreen(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                buffering = playbackState == Player.STATE_BUFFERING
+                if (playbackState == Player.STATE_ENDED && loopEnabled) {
+                    exoPlayer.seekTo(range.first)
+                    exoPlayer.play()
+                }
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -153,8 +198,8 @@ fun EditorScreen(
             val current = exoPlayer.currentPosition
             positionMs = current
             if (exoPlayer.isPlaying && current >= range.second) {
-                exoPlayer.pause()
                 exoPlayer.seekTo(range.first)
+                if (!loopEnabled) exoPlayer.pause()
             }
             delay(33)
         }
@@ -170,6 +215,17 @@ fun EditorScreen(
         exoPlayer.volume = if (options.muted) 0f else 1f
     }
 
+    LaunchedEffect(panel) {
+        panel?.let { lastPanel = it }
+    }
+
+    LaunchedEffect(flashTick) {
+        if (flashTick > 0) {
+            delay(650)
+            flashDirection = 0
+        }
+    }
+
     val togglePlay: () -> Unit = {
         if (exoPlayer.isPlaying) {
             exoPlayer.pause()
@@ -182,6 +238,32 @@ fun EditorScreen(
         }
     }
 
+    val seekBy: (Long) -> Unit = { delta ->
+        exoPlayer.seekTo(state.clip.coercePosition(exoPlayer.currentPosition + delta))
+    }
+
+    val latestToggle by rememberUpdatedState(togglePlay)
+    val latestSeekBy by rememberUpdatedState(seekBy)
+
+    val announce: (String) -> Unit = { message ->
+        scope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            snackbar.showSnackbar(message)
+        }
+    }
+
+    val setStartHere: () -> Unit = {
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        viewModel.setStartAt(exoPlayer.currentPosition)
+        announce("Start set to ${formatTime(viewModel.state.value.clip.startMs)}")
+    }
+
+    val setEndHere: () -> Unit = {
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        viewModel.setEndAt(exoPlayer.currentPosition)
+        announce("End set to ${formatTime(viewModel.state.value.clip.endMs)}")
+    }
+
     val requestBack: () -> Unit = {
         if (!exporting) {
             if (state.hasEdits) showDiscard = true else onBack()
@@ -191,8 +273,42 @@ fun EditorScreen(
     BackHandler(onBack = requestBack)
     BackHandler(enabled = panel != null) { panel = null }
 
+    val chips = remember(options, state.clip) {
+        buildList {
+            if (state.clip.isTrimmed) {
+                add(EditChip("trim", "Trim ${formatTime(state.clip.trimmedDurationMs)}") { viewModel.resetTrim() })
+            }
+            if (options.filter != VideoFilter.NONE) {
+                val label = if (options.filter.adjustable) {
+                    "${options.filter.label} ${(options.filterIntensity * 100).roundToInt()}%"
+                } else {
+                    options.filter.label
+                }
+                add(EditChip("filter", label) { viewModel.setFilter(VideoFilter.NONE) })
+            }
+            if (options.hasAdjustments) {
+                add(EditChip("adjust", "Adjust") { viewModel.resetAdjustments() })
+            }
+            if (options.rotationDegrees % 360 != 0) {
+                add(EditChip("rotate", "Rotate ${options.rotationDegrees}°") {
+                    viewModel.updateOptions { it.copy(rotationDegrees = 0) }
+                })
+            }
+            if (options.flipHorizontal) {
+                add(EditChip("flip", "Flip") { viewModel.updateOptions { it.copy(flipHorizontal = false) } })
+            }
+            if (options.muted) {
+                add(EditChip("mute", "Muted") { viewModel.updateOptions { it.copy(muted = false) } })
+            }
+            options.shortSide?.let { side ->
+                add(EditChip("quality", "${side}p") { viewModel.setQuality(null) })
+            }
+        }
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = { Text("Editor") },
@@ -202,10 +318,16 @@ fun EditorScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = viewModel::undo, enabled = state.canUndo && !exporting) {
+                        Icon(Icons.Filled.Undo, contentDescription = "Undo")
+                    }
+                    IconButton(onClick = viewModel::redo, enabled = state.canRedo && !exporting) {
+                        Icon(Icons.Filled.Redo, contentDescription = "Redo")
+                    }
                     Button(
                         onClick = viewModel::startExport,
                         enabled = state.canExport,
-                        modifier = Modifier.padding(end = 8.dp)
+                        modifier = Modifier.padding(start = 4.dp, end = 8.dp)
                     ) {
                         Text("Export")
                     }
@@ -213,7 +335,8 @@ fun EditorScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground
+                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
         }
@@ -223,6 +346,13 @@ fun EditorScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            AnimatedVisibility(visible = exporting) {
+                LinearProgressIndicator(
+                    progress = { (exportStatus as? ExportStatus.Running)?.progress ?: 0f },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             BoxWithConstraints(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
@@ -248,7 +378,7 @@ fun EditorScreen(
                 val viewHeightPx = with(density) { viewHeight.dp.roundToPx() }.coerceAtLeast(1)
                 val turnDegrees = options.rotationDegrees.toFloat()
                 val flipped = options.flipHorizontal
-                val matrix = previewMatrix
+                val matrix = shownMatrix
 
                 AndroidView(
                     factory = { ctx ->
@@ -283,10 +413,25 @@ fun EditorScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clickable(enabled = !exporting, onClick = togglePlay)
+                        .pointerInput(exporting) {
+                            if (exporting) return@pointerInput
+                            detectTapGestures(
+                                onTap = { latestToggle() },
+                                onDoubleTap = { offset ->
+                                    val forward = offset.x > size.width / 2f
+                                    latestSeekBy(if (forward) SEEK_STEP_MS else -SEEK_STEP_MS)
+                                    flashDirection = if (forward) 1 else -1
+                                    flashTick += 1
+                                }
+                            )
+                        }
                 )
 
-                if (!playing) {
+                AnimatedVisibility(
+                    visible = !playing && !buffering,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut()
+                ) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
@@ -302,37 +447,83 @@ fun EditorScreen(
                         )
                     }
                 }
-            }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-            ) {
-                IconButton(onClick = togglePlay, enabled = !exporting) {
-                    Icon(
-                        imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (playing) "Pause" else "Play"
+                AnimatedVisibility(
+                    visible = buffering,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    CircularProgressIndicator(color = Color.White)
+                }
+
+                AnimatedVisibility(
+                    visible = flashDirection == -1,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut(),
+                    modifier = Modifier.align(Alignment.CenterStart)
+                ) {
+                    SeekBubble(forward = false)
+                }
+
+                AnimatedVisibility(
+                    visible = flashDirection == 1,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut(),
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                ) {
+                    SeekBubble(forward = true)
+                }
+
+                AnimatedVisibility(
+                    visible = state.sourceWidth > 0,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.TopStart)
+                ) {
+                    InfoBadge(
+                        text = "${state.sourceWidth} x ${state.sourceHeight}",
+                        modifier = Modifier.padding(10.dp)
                     )
                 }
-                Text(
-                    text = "${formatTime((positionMs - trimStart).coerceIn(0L, trimmed))} / ${formatTime(trimmed)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+
+                AnimatedVisibility(
+                    visible = previewMatrix != null,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut(),
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    CompareButton(
+                        onHold = { compareHeld = it },
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
             }
 
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                TimeLabel(label = "Start", value = formatTime(trimStart), alignment = TextAlign.Start)
-                TimeLabel(label = "Length", value = formatTime(trimmed), alignment = TextAlign.Center)
-                TimeLabel(label = "End", value = formatTime(trimEnd), alignment = TextAlign.End)
-            }
+            Spacer(Modifier.height(4.dp))
+
+            TransportBar(
+                playing = playing,
+                looping = looping,
+                enabled = !exporting,
+                positionLabel = formatTime(state.clip.relativePosition(positionMs)),
+                onToStart = { exoPlayer.seekTo(trimStart) },
+                onBack = { seekBy(-SEEK_STEP_MS) },
+                onToggle = togglePlay,
+                onForward = { seekBy(SEEK_STEP_MS) },
+                onToEnd = { exoPlayer.seekTo(trimEnd) },
+                onLoop = { looping = !looping }
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            TrimReadout(
+                startMs = trimStart,
+                lengthMs = trimmed,
+                endMs = trimEnd,
+                enabled = !exporting,
+                onSetStart = setStartHere,
+                onSetEnd = setEndHere
+            )
 
             Spacer(Modifier.height(8.dp))
 
@@ -343,7 +534,10 @@ fun EditorScreen(
                 positionMs = positionMs,
                 frames = frames,
                 enabled = !exporting,
-                onDragStarted = { exoPlayer.pause() },
+                onDragStarted = {
+                    exoPlayer.pause()
+                    viewModel.beginRangeEdit()
+                },
                 onStartChange = { ms ->
                     viewModel.setRange(ms, trimEnd)
                     exoPlayer.seekTo(ms)
@@ -356,39 +550,54 @@ fun EditorScreen(
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
 
-            HorizontalDivider(modifier = Modifier.padding(top = 12.dp))
+            EditChipsRow(chips = chips, enabled = !exporting)
 
-            val activePanel = panel
-            if (activePanel != null) {
-                StylePanel(
-                    tab = activePanel,
-                    options = options,
-                    previewFrame = frames.getOrNull(FRAME_COUNT / 2) ?: frames.firstOrNull { it != null },
-                    enabled = !exporting,
-                    onTabChange = { panel = it },
-                    onFilter = viewModel::setFilter,
-                    onIntensity = viewModel::setFilterIntensity,
-                    onAdjust = viewModel::setAdjustment,
-                    onResetAdjust = viewModel::resetAdjustments,
-                    onClose = { panel = null }
-                )
-            } else {
-                EditorMenu(
-                    options = options,
-                    hasEdits = state.hasEdits,
-                    enabled = !exporting,
-                    onRotate = viewModel::rotate,
-                    onFlip = viewModel::toggleFlip,
-                    onMute = viewModel::toggleMute,
-                    onQuality = { showQuality = true },
-                    onFilters = { panel = PanelTab.FILTERS },
-                    onEffects = { panel = PanelTab.EFFECTS },
-                    onAdjust = { panel = PanelTab.ADJUST },
-                    onReset = {
-                        viewModel.reset()
-                        exoPlayer.seekTo(0L)
-                    }
-                )
+            HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
+
+            AnimatedContent(
+                targetState = panel != null,
+                transitionSpec = {
+                    (slideInVertically(tween(280)) { it / 2 } + fadeIn(tween(220))) togetherWith
+                        (slideOutVertically(tween(220)) { it / 2 } + fadeOut(tween(160)))
+                },
+                label = "bottomArea"
+            ) { showPanel ->
+                if (showPanel) {
+                    StylePanel(
+                        tab = panel ?: lastPanel,
+                        options = options,
+                        previewFrame = frames.getOrNull(FRAME_COUNT / 2) ?: frames.firstOrNull { it != null },
+                        enabled = !exporting,
+                        onTabChange = { panel = it },
+                        onFilter = viewModel::setFilter,
+                        onIntensity = viewModel::setFilterIntensity,
+                        onAdjust = viewModel::setAdjustment,
+                        onResetAdjust = viewModel::resetAdjustments,
+                        onClose = { panel = null }
+                    )
+                } else {
+                    EditorMenu(
+                        category = menuCategory,
+                        expanded = menuExpanded,
+                        options = options,
+                        hasEdits = state.hasEdits,
+                        enabled = !exporting,
+                        onCategoryChange = { menuCategoryIndex = it.ordinal },
+                        onExpandedChange = { menuExpanded = it },
+                        onRotate = viewModel::rotate,
+                        onFlip = viewModel::toggleFlip,
+                        onMute = viewModel::toggleMute,
+                        onQuality = { showQuality = true },
+                        onFilters = { panel = PanelTab.FILTERS },
+                        onEffects = { panel = PanelTab.EFFECTS },
+                        onAdjust = { panel = PanelTab.ADJUST },
+                        onReset = {
+                            viewModel.reset()
+                            exoPlayer.seekTo(0L)
+                        },
+                        onSoon = { announce("$it is coming soon") }
+                    )
+                }
             }
         }
     }
@@ -427,28 +636,6 @@ fun EditorScreen(
             dismissButton = {
                 TextButton(onClick = { showDiscard = false }) { Text("Keep editing") }
             }
-        )
-    }
-}
-
-@Composable
-private fun TimeLabel(
-    label: String,
-    value: String,
-    alignment: TextAlign
-) {
-    Column {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = alignment
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            textAlign = alignment
         )
     }
 }
