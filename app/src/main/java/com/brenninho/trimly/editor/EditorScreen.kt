@@ -60,13 +60,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.brenninho.trimly.data.FrameExtractor
+import com.brenninho.trimly.engine.EffectsFactory
 import com.brenninho.trimly.model.Clip
 import java.util.Locale
 import kotlinx.coroutines.delay
@@ -104,11 +103,16 @@ fun EditorScreen(
     var effectsApplied by remember { mutableStateOf(false) }
     var showQuality by remember { mutableStateOf(false) }
     var showDiscard by remember { mutableStateOf(false) }
+    var panel by remember { mutableStateOf<PanelTab?>(null) }
 
     val range by rememberUpdatedState(trimStart to trimEnd)
 
     val frames = remember(clip.uri) {
         mutableStateListOf<ImageBitmap?>().apply { repeat(FRAME_COUNT) { add(null) } }
+    }
+
+    val visualOptions = remember(options) {
+        options.copy(muted = false, shortSide = null, targetHeight = null)
     }
 
     DisposableEffect(exoPlayer) {
@@ -147,19 +151,13 @@ fun EditorScreen(
         }
     }
 
-    LaunchedEffect(exoPlayer, options.rotationDegrees, options.flipHorizontal) {
-        if (options.hasVideoTransform || effectsApplied) {
-            val effects = ArrayList<Effect>()
-            if (options.hasVideoTransform) {
-                effects.add(
-                    ScaleAndRotateTransformation.Builder()
-                        .setRotationDegrees(options.rotationDegrees.toFloat())
-                        .setScale(if (options.flipHorizontal) -1f else 1f, 1f)
-                        .build()
-                )
-            }
+    LaunchedEffect(exoPlayer, visualOptions) {
+        delay(120)
+        val effects = EffectsFactory.build(visualOptions)
+        if (effects.isNotEmpty() || effectsApplied) {
             exoPlayer.setVideoEffects(effects)
-            effectsApplied = options.hasVideoTransform
+            effectsApplied = effects.isNotEmpty()
+            exoPlayer.seekTo(exoPlayer.currentPosition)
         }
     }
 
@@ -186,6 +184,7 @@ fun EditorScreen(
     }
 
     BackHandler(onBack = requestBack)
+    BackHandler(enabled = panel != null) { panel = null }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -313,19 +312,38 @@ fun EditorScreen(
 
             HorizontalDivider(modifier = Modifier.padding(top = 12.dp))
 
-            EditorMenu(
-                options = options,
-                hasEdits = state.hasEdits,
-                enabled = !exporting,
-                onRotate = viewModel::rotate,
-                onFlip = viewModel::toggleFlip,
-                onMute = viewModel::toggleMute,
-                onQuality = { showQuality = true },
-                onReset = {
-                    viewModel.reset()
-                    exoPlayer.seekTo(0L)
-                }
-            )
+            val activePanel = panel
+            if (activePanel != null) {
+                StylePanel(
+                    tab = activePanel,
+                    options = options,
+                    previewFrame = frames.getOrNull(FRAME_COUNT / 2) ?: frames.firstOrNull { it != null },
+                    enabled = !exporting,
+                    onTabChange = { panel = it },
+                    onFilter = viewModel::setFilter,
+                    onIntensity = viewModel::setFilterIntensity,
+                    onAdjust = viewModel::setAdjustment,
+                    onResetAdjust = viewModel::resetAdjustments,
+                    onClose = { panel = null }
+                )
+            } else {
+                EditorMenu(
+                    options = options,
+                    hasEdits = state.hasEdits,
+                    enabled = !exporting,
+                    onRotate = viewModel::rotate,
+                    onFlip = viewModel::toggleFlip,
+                    onMute = viewModel::toggleMute,
+                    onQuality = { showQuality = true },
+                    onFilters = { panel = PanelTab.FILTERS },
+                    onEffects = { panel = PanelTab.EFFECTS },
+                    onAdjust = { panel = PanelTab.ADJUST },
+                    onReset = {
+                        viewModel.reset()
+                        exoPlayer.seekTo(0L)
+                    }
+                )
+            }
         }
     }
 
