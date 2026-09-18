@@ -70,16 +70,25 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.brenninho.trimly.i18n.AppStrings
+import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.model.ExportOptions
 import com.brenninho.trimly.model.FilterGroup
 import com.brenninho.trimly.model.VideoFilter
 import kotlinx.coroutines.delay
 
-enum class MenuCategory(val label: String) {
-    EDIT("Edit"),
-    STYLE("Style"),
-    AUDIO("Audio"),
-    OUTPUT("Output")
+enum class MenuCategory {
+    EDIT,
+    STYLE,
+    AUDIO,
+    OUTPUT;
+
+    fun label(s: AppStrings): String = when (this) {
+        EDIT -> s.catEdit
+        STYLE -> s.catStyle
+        AUDIO -> s.catAudio
+        OUTPUT -> s.catOutput
+    }
 }
 
 private class MenuEntry(
@@ -112,6 +121,7 @@ fun EditorMenu(
     onSoon: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val s = LocalStrings.current
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 0f else 180f,
         animationSpec = tween(250),
@@ -139,14 +149,14 @@ fun EditorMenu(
                                 onExpandedChange(true)
                             }
                         },
-                        text = { Text(item.label) }
+                        text = { Text(item.label(s)) }
                     )
                 }
             }
             IconButton(onClick = { onExpandedChange(!expanded) }) {
                 Icon(
                     imageVector = Icons.Filled.ExpandMore,
-                    contentDescription = if (expanded) "Collapse menu" else "Expand menu",
+                    contentDescription = if (expanded) s.collapseMenu else s.expandMenu,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.graphicsLayer { rotationZ = chevron }
                 )
@@ -169,62 +179,62 @@ fun EditorMenu(
             ) { current ->
                 val entries = when (current) {
                     MenuCategory.EDIT -> listOf(
-                        MenuEntry("trim", Icons.Filled.ContentCut, "Trim", active = true, locked = true, onClick = {}),
+                        MenuEntry("trim", Icons.Filled.ContentCut, s.toolTrim, active = true, locked = true, onClick = {}),
                         MenuEntry(
                             "rotate",
                             Icons.Filled.RotateRight,
-                            if (options.rotationDegrees % 360 != 0) "Rotate ${options.rotationDegrees}°" else "Rotate",
+                            if (options.rotationDegrees % 360 != 0) s.rotateLabel(options.rotationDegrees) else s.toolRotate,
                             active = options.rotationDegrees % 360 != 0,
                             onClick = onRotate
                         ),
-                        MenuEntry("flip", Icons.Filled.Flip, "Flip", active = options.flipHorizontal, onClick = onFlip),
-                        MenuEntry("split", Icons.Filled.Layers, "Split", soon = true, onClick = { onSoon("Split") }),
-                        MenuEntry("speed", Icons.Filled.Speed, "Speed", soon = true, onClick = { onSoon("Speed") })
+                        MenuEntry("flip", Icons.Filled.Flip, s.flip, active = options.flipHorizontal, onClick = onFlip),
+                        MenuEntry("split", Icons.Filled.Layers, s.split, soon = true, onClick = { onSoon(s.split) }),
+                        MenuEntry("speed", Icons.Filled.Speed, s.toolSpeed, soon = true, onClick = { onSoon(s.toolSpeed) })
                     )
 
                     MenuCategory.STYLE -> listOf(
                         MenuEntry(
                             "filters",
                             Icons.Filled.Palette,
-                            if (filterActive) options.filter.label else "Filters",
+                            if (filterActive) s.filterName(options.filter) else s.toolFilters,
                             active = filterActive,
                             onClick = onFilters
                         ),
                         MenuEntry(
                             "effects",
                             Icons.Filled.AutoAwesome,
-                            if (effectActive) options.filter.label else "Effects",
+                            if (effectActive) s.filterName(options.filter) else s.toolEffects,
                             active = effectActive,
                             onClick = onEffects
                         ),
-                        MenuEntry("adjust", Icons.Filled.Tune, "Adjust", active = options.hasAdjustments, onClick = onAdjust),
-                        MenuEntry("text", Icons.Filled.TextFields, "Text", soon = true, onClick = { onSoon("Text") })
+                        MenuEntry("adjust", Icons.Filled.Tune, s.toolAdjust, active = options.hasAdjustments, onClick = onAdjust),
+                        MenuEntry("text", Icons.Filled.TextFields, s.toolText, soon = true, onClick = { onSoon(s.toolText) })
                     )
 
                     MenuCategory.AUDIO -> listOf(
                         MenuEntry(
                             "mute",
                             if (options.muted) Icons.Filled.MusicOff else Icons.Filled.MusicNote,
-                            if (options.muted) "Unmute" else "Mute",
+                            if (options.muted) s.unmute else s.mute,
                             active = options.muted,
                             onClick = onMute
                         ),
-                        MenuEntry("volume", Icons.Filled.MusicNote, "Volume", soon = true, onClick = { onSoon("Volume") }),
-                        MenuEntry("fade", Icons.Filled.Tune, "Fade", soon = true, onClick = { onSoon("Fade") })
+                        MenuEntry("volume", Icons.Filled.MusicNote, s.volume, soon = true, onClick = { onSoon(s.volume) }),
+                        MenuEntry("fade", Icons.Filled.Tune, s.fade, soon = true, onClick = { onSoon(s.fade) })
                     )
 
                     MenuCategory.OUTPUT -> listOf(
                         MenuEntry(
                             "quality",
                             Icons.Filled.HighQuality,
-                            options.shortSide?.let { "${it}p" } ?: "Quality",
+                            options.shortSide?.let { "${it}p" } ?: s.toolQuality,
                             active = options.shortSide != null,
                             onClick = onQuality
                         ),
                         MenuEntry(
                             "reset",
                             Icons.Filled.Refresh,
-                            "Reset all",
+                            s.resetAll,
                             locked = !hasEdits,
                             onClick = onReset
                         )
@@ -250,6 +260,7 @@ private fun MenuItem(
     index: Int,
     enabled: Boolean
 ) {
+    val s = LocalStrings.current
     val source = remember { MutableInteractionSource() }
     var shown by remember { mutableStateOf(false) }
 
@@ -335,9 +346,26 @@ private fun MenuItem(
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            text = if (entry.soon) "Soon" else " ",
+            text = if (entry.soon) s.soon else " ",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun ActiveDot(visible: Boolean) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = scaleIn() + fadeIn(),
+        exit = scaleOut() + fadeOut()
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary)
         )
     }
 }
@@ -359,21 +387,5 @@ internal fun Modifier.pressScale(
     return this.graphicsLayer {
         scaleX = scale
         scaleY = scale
-    }
-}
-
-@Composable
-private fun ActiveDot(visible: Boolean) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = scaleIn() + fadeIn(),
-        exit = scaleOut() + fadeOut()
-    ) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary)
-        )
     }
 }
