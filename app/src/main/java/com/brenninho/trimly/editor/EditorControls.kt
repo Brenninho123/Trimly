@@ -5,6 +5,12 @@ package com.brenninho.trimly.editor
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -12,6 +18,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -58,15 +65,37 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import com.brenninho.trimly.i18n.LocalStrings
 
 class EditChip(
     val id: String,
     val label: String,
     val onClear: () -> Unit
 )
+
+@Composable
+fun EditorEntrance(
+    visible: Boolean,
+    delayMillis: Int,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(tween(350, delayMillis = delayMillis)) +
+            slideInVertically(
+                animationSpec = tween(450, delayMillis = delayMillis, easing = FastOutSlowInEasing),
+                initialOffsetY = { it / 4 }
+            )
+    ) {
+        content()
+    }
+}
 
 @Composable
 fun TransportBar(
@@ -82,6 +111,8 @@ fun TransportBar(
     onLoop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val s = LocalStrings.current
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -99,11 +130,11 @@ fun TransportBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            TransportButton(Icons.Filled.SkipPrevious, "Go to start", enabled, onToStart)
-            TransportButton(Icons.Filled.Replay5, "Back 5 seconds", enabled, onBack)
+            TransportButton(Icons.Filled.SkipPrevious, s.goToStart, enabled, onToStart)
+            TransportButton(Icons.Filled.Replay5, s.back5, enabled, onBack)
             PlayButton(playing = playing, enabled = enabled, onClick = onToggle)
-            TransportButton(Icons.Filled.Forward5, "Forward 5 seconds", enabled, onForward)
-            TransportButton(Icons.Filled.SkipNext, "Go to end", enabled, onToEnd)
+            TransportButton(Icons.Filled.Forward5, s.forward5, enabled, onForward)
+            TransportButton(Icons.Filled.SkipNext, s.goToEnd, enabled, onToEnd)
         }
         LoopButton(looping = looping, enabled = enabled, onClick = onLoop)
     }
@@ -135,33 +166,78 @@ private fun PlayButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
+    val s = LocalStrings.current
     val source = remember { MutableInteractionSource() }
+    val pulse = rememberInfiniteTransition(label = "playPulse")
+    val ringScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.55f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "playRingScale"
+    )
+    val ringAlpha by pulse.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "playRingAlpha"
+    )
+    val ringPresence by animateFloatAsState(
+        targetValue = if (playing) 1f else 0f,
+        animationSpec = tween(220),
+        label = "playRingPresence"
+    )
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .padding(horizontal = 4.dp)
             .size(52.dp)
-            .pressScale(source, 0.9f)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary)
-            .clickable(
-                interactionSource = source,
-                indication = LocalIndication.current,
-                enabled = enabled,
-                onClick = onClick
-            )
     ) {
-        AnimatedContent(
-            targetState = playing,
-            transitionSpec = { (scaleIn(tween(160)) + fadeIn(tween(160))) togetherWith (scaleOut(tween(120)) + fadeOut(tween(120))) },
-            label = "playIcon"
-        ) { isPlaying ->
-            Icon(
-                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (isPlaying) "Pause" else "Play",
-                tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(28.dp)
-            )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer {
+                    scaleX = ringScale
+                    scaleY = ringScale
+                    alpha = ringAlpha * ringPresence
+                }
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary)
+        )
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .matchParentSize()
+                .pressScale(source, 0.9f)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary)
+                .clickable(
+                    interactionSource = source,
+                    indication = LocalIndication.current,
+                    enabled = enabled,
+                    onClick = onClick
+                )
+        ) {
+            AnimatedContent(
+                targetState = playing,
+                transitionSpec = {
+                    (scaleIn(tween(160)) + fadeIn(tween(160))) togetherWith (scaleOut(tween(120)) + fadeOut(tween(120)))
+                },
+                label = "playIcon"
+            ) { isPlaying ->
+                Icon(
+                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (isPlaying) s.pause else s.play,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
     }
 }
@@ -172,6 +248,7 @@ private fun LoopButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
+    val s = LocalStrings.current
     val source = remember { MutableInteractionSource() }
     val tint by animateColorAsState(
         targetValue = if (looping) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -195,7 +272,7 @@ private fun LoopButton(
     ) {
         Icon(
             imageVector = Icons.Filled.Repeat,
-            contentDescription = if (looping) "Loop on" else "Loop off",
+            contentDescription = if (looping) s.loopOn else s.loopOff,
             tint = tint
         )
     }
@@ -211,6 +288,8 @@ fun TrimReadout(
     onSetEnd: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val s = LocalStrings.current
+
     Row(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -219,7 +298,7 @@ fun TrimReadout(
             .padding(horizontal = 16.dp)
     ) {
         TimeChip(
-            label = "Set start",
+            label = s.setStart,
             value = formatTime(startMs),
             alignment = Alignment.Start,
             enabled = enabled,
@@ -227,7 +306,7 @@ fun TrimReadout(
         )
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "Length",
+                text = s.lengthLabel,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -238,7 +317,7 @@ fun TrimReadout(
             )
         }
         TimeChip(
-            label = "Set end",
+            label = s.setEnd,
             value = formatTime(endMs),
             alignment = Alignment.End,
             enabled = enabled,
@@ -288,6 +367,8 @@ fun EditChipsRow(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val s = LocalStrings.current
+
     AnimatedVisibility(
         visible = chips.isNotEmpty(),
         enter = expandVertically(tween(240)) + fadeIn(tween(200)),
@@ -306,7 +387,7 @@ fun EditChipsRow(
                     trailingIcon = {
                         Icon(
                             imageVector = Icons.Filled.Close,
-                            contentDescription = "Remove ${chip.label}",
+                            contentDescription = s.removeChip(chip.label),
                             modifier = Modifier.size(AssistChipDefaults.IconSize)
                         )
                     },
@@ -350,6 +431,7 @@ fun CompareButton(
     onHold: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val s = LocalStrings.current
     val latest by rememberUpdatedState(onHold)
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -375,7 +457,7 @@ fun CompareButton(
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = "Hold to compare",
+            text = s.holdCompare,
             style = MaterialTheme.typography.labelMedium,
             color = Color.White
         )
@@ -396,6 +478,19 @@ fun InfoBadge(
             .background(Color.Black.copy(alpha = 0.55f))
             .padding(horizontal = 10.dp, vertical = 5.dp)
     )
+}
+
+@Composable
+fun EditedDot(visible: Boolean) {
+    OverlayVisibility(visible = visible) {
+        Box(
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.secondary)
+        )
+    }
 }
 
 @Composable
