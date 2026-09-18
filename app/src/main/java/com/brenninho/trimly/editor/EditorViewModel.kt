@@ -29,6 +29,9 @@ import kotlinx.coroutines.withContext
 
 const val MIN_TRIM_MS = 500L
 
+private const val MAX_HISTORY = 50
+private const val COALESCE_WINDOW_MS = 1000L
+
 sealed interface ExportStatus {
     data object Idle : ExportStatus
     data class Running(val progress: Float) : ExportStatus
@@ -41,10 +44,12 @@ data class EditorState(
     val options: ExportOptions = ExportOptions(),
     val sourceWidth: Int = 0,
     val sourceHeight: Int = 0,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
     val export: ExportStatus = ExportStatus.Idle
 ) {
     val hasEdits: Boolean
-        get() = clip.startMs > 0L || clip.endMs < clip.durationMs || options != ExportOptions()
+        get() = clip.isTrimmed || options != ExportOptions()
 
     val canExport: Boolean
         get() = clip.trimmedDurationMs >= MIN_TRIM_MS && export !is ExportStatus.Running
@@ -56,6 +61,11 @@ data class EditorState(
         }
 }
 
+private data class Snapshot(
+    val clip: Clip,
+    val options: ExportOptions
+)
+
 class EditorViewModel(
     private val app: Application,
     clip: Clip
@@ -66,6 +76,12 @@ class EditorViewModel(
     private val _state = MutableStateFlow(EditorState(clip))
     val state: StateFlow<EditorState> = _state.asStateFlow()
     private var job: Job? = null
+
+    private val undoStack = ArrayDeque<Snapshot>()
+    private val redoStack = ArrayDeque<Snapshot>()
+    private var pendingRange: Snapshot? = null
+    private var coalesceKey: String? = null
+    private var coalesceAt = 0L
 
     init {
         viewModelScope.launch {
@@ -85,56 +101,116 @@ class EditorViewModel(
         }
     }
 
+    fun beginRangeEdit() {
+        val current = _state.value
+        pendingRange = Snapshot(current.clip, current.options)
+    }
+
     fun setRange(startMs: Long, endMs: Long) {
-        _state.update { it.copy(clip = it.clip.withRange(startMs, endMs)) }
+        val current = _state.value
+        val next = current.clip.withRange(startMs, endMs)
+        if (next == current.clip) return
+        pendingRange?.let {
+            record(it)
+            pendingRange = null
+        }
+        _state.update { it.copy(clip = next) }
+    }
+
+    fun setStartAt(positionMs: Long) {
+        commitClip(_state.value.clip.withStart(positionMs, MIN_TRIM_MS))
+    }
+
+    fun setEndAt(positionMs: Long) {
+        commitClip(_state.value.clip.withEnd(positionMs, MIN_TRIM_MS))
+    }
+
+    fun resetTrim() {
+        commitClip(_state.value.clip.reset())
+    }
+
+    fun updateOptions(key: String? = null, transform: (ExportOptions) -> ExportOptions) {
+        val current = _state.value
+        val next = transform(current.options)
+        if (next == current.options) return
+
+        val now = System.currentTimeMillis()
+        val merge = key != null && key == coalesceKey && now - coalesceAt < COALESCE_WINDOW_MS
+        if (!merge) record(Snapshot(current.clip, current.options))
+        coalesceKey = key
+        coalesceAt = now
+
+        _state.update { it.copy(options = next) }
     }
 
     fun rotate() {
-        _state.update { it.copy(options = it.options.rotated()) }
+        updateOptions { it.rotated() }
     }
 
     fun toggleFlip() {
-        _state.update { it.copy(options = it.options.copy(flipHorizontal = !it.options.flipHorizontal)) }
+        updateOptions { it.copy(flipHorizontal = !it.flipHorizontal) }
     }
 
     fun toggleMute() {
-        _state.update { it.copy(options = it.options.copy(muted = !it.options.muted)) }
+        updateOptions { it.copy(muted = !it.muted) }
     }
 
     fun setQuality(shortSide: Int?) {
-        _state.update { it.copy(options = it.options.copy(shortSide = shortSide)) }
+        updateOptions { it.copy(shortSide = shortSide) }
     }
 
     fun setFilter(filter: VideoFilter) {
-        _state.update {
-            if (it.options.filter == filter) {
-                it
-            } else {
-                it.copy(options = it.options.copy(filter = filter, filterIntensity = 1f))
-            }
-        }
+        updateOptions { if (it.filter == filter) it else it.copy(filter = filter, filterIntensity = 1f) }
     }
 
     fun setFilterIntensity(value: Float) {
-        _state.update { it.copy(options = it.options.copy(filterIntensity = value.coerceIn(0f, 1f))) }
+        updateOptions(key = "intensity") { it.copy(filterIntensity = value.coerceIn(0f, 1f)) }
     }
 
     fun setAdjustment(kind: Adjustment, value: Int) {
-        _state.update { it.copy(options = it.options.withAdjustment(kind, value.coerceIn(-100, 100))) }
+        updateOptions(key = "adjust_${kind.name}") { it.withAdjustment(kind, value.coerceIn(-100, 100)) }
     }
 
     fun resetAdjustments() {
-        _state.update { it.copy(options = it.options.clearAdjustments()) }
+        updateOptions { it.clearAdjustments() }
+    }
+
+    fun undo() {
+        val previous = undoStack.removeLastOrNull() ?: return
+        val current = _state.value
+        redoStack.addLast(Snapshot(current.clip, current.options))
+        coalesceKey = null
+        _state.update {
+            it.copy(
+                clip = previous.clip,
+                options = previous.options,
+                canUndo = undoStack.isNotEmpty(),
+                canRedo = true
+            )
+        }
+    }
+
+    fun redo() {
+        val next = redoStack.removeLastOrNull() ?: return
+        val current = _state.value
+        undoStack.addLast(Snapshot(current.clip, current.options))
+        coalesceKey = null
+        _state.update {
+            it.copy(
+                clip = next.clip,
+                options = next.options,
+                canUndo = true,
+                canRedo = redoStack.isNotEmpty()
+            )
+        }
     }
 
     fun reset() {
-        _state.update {
-            EditorState(
-                clip = original,
-                sourceWidth = it.sourceWidth,
-                sourceHeight = it.sourceHeight
-            )
-        }
+        val current = _state.value
+        if (!current.hasEdits) return
+        record(Snapshot(current.clip, current.options))
+        coalesceKey = null
+        _state.update { it.copy(clip = original, options = ExportOptions()) }
     }
 
     fun startExport() {
@@ -182,6 +258,21 @@ class EditorViewModel(
 
     fun dismissExport() {
         _state.update { it.copy(export = ExportStatus.Idle) }
+    }
+
+    private fun commitClip(next: Clip) {
+        val current = _state.value
+        if (next == current.clip) return
+        record(Snapshot(current.clip, current.options))
+        coalesceKey = null
+        _state.update { it.copy(clip = next) }
+    }
+
+    private fun record(snapshot: Snapshot) {
+        undoStack.addLast(snapshot)
+        while (undoStack.size > MAX_HISTORY) undoStack.removeFirst()
+        redoStack.clear()
+        _state.update { it.copy(canUndo = true, canRedo = false) }
     }
 
     private fun resolveOptions(state: EditorState): ExportOptions {
