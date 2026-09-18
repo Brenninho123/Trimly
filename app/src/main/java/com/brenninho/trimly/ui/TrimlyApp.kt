@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.runtime.Composable
 import com.brenninho.trimly.MainState
 import com.brenninho.trimly.data.RecentVideo
+import com.brenninho.trimly.editor.EditorScreen
 
 @Composable
 fun TrimlyApp(
@@ -19,7 +20,7 @@ fun TrimlyApp(
     onClose: () -> Unit
 ) {
     when (state) {
-        is MainState.Ready -> PreviewScreen(clip = state.clip, onBack = onClose)
+        is MainState.Ready -> EditorScreen(clip = state.clip, onBack = onClose)
         else -> HomeScreen(
             state = state,
             recents = recents,
