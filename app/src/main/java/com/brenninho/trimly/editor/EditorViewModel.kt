@@ -70,8 +70,17 @@ class EditorViewModel(
     init {
         viewModelScope.launch {
             val size = withContext(Dispatchers.IO) { readSize(clip.uri) }
-            if (size != null) {
-                _state.update { it.copy(sourceWidth = size.first, sourceHeight = size.second) }
+            if (size != null) setSourceSize(size.first, size.second)
+        }
+    }
+
+    fun setSourceSize(width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        _state.update {
+            if (it.sourceWidth > 0 && it.sourceHeight > 0) {
+                it
+            } else {
+                it.copy(sourceWidth = width, sourceHeight = height)
             }
         }
     }
@@ -160,7 +169,8 @@ class EditorViewModel(
                 throw e
             } catch (e: Exception) {
                 output.delete()
-                _state.update { it.copy(export = ExportStatus.Failed(e.message ?: "Export failed")) }
+                val detail = listOfNotNull(e.message, e.cause?.message).distinct().joinToString(": ")
+                _state.update { it.copy(export = ExportStatus.Failed(detail.ifBlank { "Export failed" })) }
             }
         }
     }
