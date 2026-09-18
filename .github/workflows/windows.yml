@@ -46,6 +46,28 @@ jobs:
         with:
           gradle-version: 8.9
 
+      - name: Check desktop module
+        shell: pwsh
+        run: |
+          if (-not (Test-Path desktop/build.gradle.kts)) {
+            throw "desktop/build.gradle.kts is missing. Add the desktop folder to the repository."
+          }
+          $included = Select-String -Path settings.gradle.kts -Pattern 'include\(":desktop"\)' -Quiet
+          if (-not $included) {
+            Write-Host "settings.gradle.kts does not include :desktop, adding it for this build"
+            $snippet = @'
+
+          if (providers.gradleProperty("trimly.desktop").isPresent) {
+              include(":desktop")
+          }
+          '@
+            Add-Content -Path settings.gradle.kts -Value $snippet
+          }
+          Get-Content settings.gradle.kts
+
+      - name: List Gradle projects
+        run: gradle projects -Ptrimly.desktop=true
+
       - name: Download FFmpeg
         shell: pwsh
         run: |
