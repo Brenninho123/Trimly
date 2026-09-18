@@ -32,9 +32,18 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val state by viewModel.state.collectAsStateWithLifecycle()
+                    val recents by viewModel.recents.collectAsStateWithLifecycle()
+                    val gridMode by viewModel.gridMode.collectAsStateWithLifecycle()
                     TrimlyApp(
                         state = state,
+                        recents = recents,
+                        gridMode = gridMode,
                         onPick = viewModel::open,
+                        onOpenRecent = viewModel::openRecent,
+                        onRemoveRecent = viewModel::removeRecent,
+                        onClearRecents = viewModel::clearRecents,
+                        onToggleGrid = viewModel::toggleGrid,
+                        onDismissError = viewModel::dismissError,
                         onClose = viewModel::close
                     )
                 }
