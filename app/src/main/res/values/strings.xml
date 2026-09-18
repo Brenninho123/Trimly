@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Trimly</string>
+    <string name="shortcut_pick_short">Select video</string>
+    <string name="shortcut_pick_long">Select a video to edit</string>
+    <string name="shortcut_record_short">Record</string>
+    <string name="shortcut_record_long">Record a new video</string>
 </resources>
