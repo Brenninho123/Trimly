@@ -22,11 +22,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.brenninho.trimly.auth.DiscordAuth
+import com.brenninho.trimly.i18n.LocalStrings
+import com.brenninho.trimly.i18n.stringsFor
+import com.brenninho.trimly.settings.LoginError
+import com.brenninho.trimly.settings.SettingsActions
 import com.brenninho.trimly.ui.TrimlyApp
 import com.brenninho.trimly.ui.theme.TrimlyTheme
 
@@ -64,21 +72,38 @@ class MainActivity : ComponentActivity() {
                     val state by viewModel.state.collectAsStateWithLifecycle()
                     val recents by viewModel.recents.collectAsStateWithLifecycle()
                     val gridMode by viewModel.gridMode.collectAsStateWithLifecycle()
+                    val settings by viewModel.settingsState.collectAsStateWithLifecycle()
+
+                    val configuration = LocalConfiguration.current
+                    val strings = remember(settings.language, configuration) { stringsFor(settings.language) }
+                    val actions = remember {
+                        SettingsActions(
+                            onLanguage = viewModel::setLanguage,
+                            onTips = viewModel::setTipsEnabled,
+                            onLogin = ::startDiscordLogin,
+                            onCancelLogin = viewModel::cancelLogin,
+                            onLogout = viewModel::logout
+                        )
+                    }
 
                     KeepScreenOn(enabled = state is MainState.Ready)
 
-                    TrimlyApp(
-                        state = state,
-                        recents = recents,
-                        gridMode = gridMode,
-                        onPick = viewModel::open,
-                        onOpenRecent = viewModel::openRecent,
-                        onRemoveRecent = viewModel::removeRecent,
-                        onClearRecents = viewModel::clearRecents,
-                        onToggleGrid = viewModel::toggleGrid,
-                        onDismissError = viewModel::dismissError,
-                        onClose = viewModel::close
-                    )
+                    CompositionLocalProvider(LocalStrings provides strings) {
+                        TrimlyApp(
+                            state = state,
+                            recents = recents,
+                            gridMode = gridMode,
+                            settings = settings,
+                            actions = actions,
+                            onPick = viewModel::open,
+                            onOpenRecent = viewModel::openRecent,
+                            onRemoveRecent = viewModel::removeRecent,
+                            onClearRecents = viewModel::clearRecents,
+                            onToggleGrid = viewModel::toggleGrid,
+                            onDismissError = viewModel::dismissError,
+                            onClose = viewModel::close
+                        )
+                    }
                 }
             }
         }
@@ -96,8 +121,24 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    private fun startDiscordLogin() {
+        val url = viewModel.beginDiscordLogin()
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (e: ActivityNotFoundException) {
+            viewModel.reportLoginError(LoginError.NO_BROWSER)
+        }
+    }
+
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
+
+        val data = intent.data
+        if (intent.action == Intent.ACTION_VIEW && data != null && DiscordAuth.isRedirect(data)) {
+            viewModel.handleAuthRedirect(data)
+            return
+        }
+
         when (intent.action) {
             ACTION_PICK_VIDEO -> window.decorView.post { launchPicker() }
             ACTION_RECORD_VIDEO -> window.decorView.post { launchRecorder() }
