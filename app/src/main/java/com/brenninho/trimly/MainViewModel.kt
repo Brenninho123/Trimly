@@ -7,21 +7,32 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.brenninho.trimly.auth.DiscordAuth
 import com.brenninho.trimly.data.RecentStore
 import com.brenninho.trimly.data.RecentVideo
+import com.brenninho.trimly.i18n.AppLanguage
 import com.brenninho.trimly.model.Clip
+import com.brenninho.trimly.settings.AppSettings
+import com.brenninho.trimly.settings.LoginError
+import com.brenninho.trimly.settings.LoginStatus
+import com.brenninho.trimly.settings.SettingsState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+enum class OpenFailure {
+    UNREADABLE
+}
 
 sealed interface MainState {
     data object Idle : MainState
     data object Loading : MainState
     data class Ready(val clip: Clip) : MainState
-    data class Failed(val message: String) : MainState
+    data class Failed(val reason: OpenFailure) : MainState
 }
 
 private data class VideoInfo(val name: String, val durationMs: Long)
@@ -29,6 +40,7 @@ private data class VideoInfo(val name: String, val durationMs: Long)
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = RecentStore(application)
+    private val settings = AppSettings(application)
 
     private val _state = MutableStateFlow<MainState>(MainState.Idle)
     val state: StateFlow<MainState> = _state.asStateFlow()
@@ -39,6 +51,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _gridMode = MutableStateFlow(store.loadGrid())
     val gridMode: StateFlow<Boolean> = _gridMode.asStateFlow()
 
+    private val _settingsState = MutableStateFlow(
+        SettingsState(
+            language = settings.language,
+            tipsEnabled = settings.tipsEnabled,
+            profile = settings.profile
+        )
+    )
+    val settingsState: StateFlow<SettingsState> = _settingsState.asStateFlow()
+
     fun open(uri: Uri) {
         _state.value = MainState.Loading
         viewModelScope.launch {
@@ -48,7 +69,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _state.value = MainState.Ready(Clip(uri, info.durationMs))
             } else {
                 forget(uri.toString())
-                _state.value = MainState.Failed("Could not read this video")
+                _state.value = MainState.Failed(OpenFailure.UNREADABLE)
             }
         }
     }
@@ -77,6 +98,70 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun close() {
         _state.value = MainState.Idle
+    }
+
+    fun setLanguage(language: AppLanguage) {
+        settings.language = language
+        _settingsState.update { it.copy(language = language) }
+    }
+
+    fun setTipsEnabled(enabled: Boolean) {
+        settings.tipsEnabled = enabled
+        _settingsState.update { it.copy(tipsEnabled = enabled) }
+    }
+
+    fun beginDiscordLogin(): String {
+        val state = DiscordAuth.newState()
+        settings.pendingState = state
+        _settingsState.update { it.copy(login = LoginStatus.Waiting) }
+        return DiscordAuth.authorizeUrl(state)
+    }
+
+    fun reportLoginError(error: LoginError) {
+        settings.pendingState = null
+        _settingsState.update { it.copy(login = LoginStatus.Failed(error)) }
+    }
+
+    fun cancelLogin() {
+        settings.pendingState = null
+        _settingsState.update { it.copy(login = LoginStatus.Idle) }
+    }
+
+    fun handleAuthRedirect(uri: Uri) {
+        val redirect = DiscordAuth.parseRedirect(uri)
+        val expected = settings.pendingState
+        settings.pendingState = null
+        val token = redirect.token
+
+        when {
+            redirect.error != null -> {
+                val error = if (redirect.error == "access_denied") LoginError.CANCELLED else LoginError.FAILED
+                reportLoginError(error)
+            }
+
+            expected == null || redirect.state != expected -> reportLoginError(LoginError.SECURITY)
+
+            token.isNullOrBlank() -> reportLoginError(LoginError.FAILED)
+
+            else -> {
+                _settingsState.update { it.copy(login = LoginStatus.Loading) }
+                viewModelScope.launch {
+                    try {
+                        val profile = DiscordAuth.fetchProfile(token)
+                        settings.profile = profile
+                        _settingsState.update { it.copy(profile = profile, login = LoginStatus.Idle) }
+                    } catch (e: Exception) {
+                        reportLoginError(LoginError.NETWORK)
+                    }
+                }
+            }
+        }
+    }
+
+    fun logout() {
+        settings.profile = null
+        settings.pendingState = null
+        _settingsState.update { it.copy(profile = null, login = LoginStatus.Idle) }
     }
 
     private fun addRecent(uri: Uri, info: VideoInfo) {
