@@ -52,12 +52,12 @@ jobs:
           if (-not (Test-Path desktop/build.gradle.kts)) {
             throw "desktop/build.gradle.kts is missing. Add the desktop folder to the repository."
           }
-          $included = Select-String -Path settings.gradle.kts -Pattern 'include\(":desktop"\)' -Quiet
-          if (-not $included) {
-            Write-Host "settings.gradle.kts does not include :desktop, adding it for this build"
+          $configured = Select-String -Path settings.gradle.kts -Pattern 'trimlyDesktop' -Quiet
+          if (-not $configured) {
+            Write-Host "settings.gradle.kts does not read trimlyDesktop, adding it for this build"
             $snippet = @'
 
-          if (providers.gradleProperty("trimly.desktop").isPresent) {
+          if (providers.gradleProperty("trimlyDesktop").isPresent) {
               include(":desktop")
           }
           '@
@@ -66,7 +66,7 @@ jobs:
           Get-Content settings.gradle.kts
 
       - name: List Gradle projects
-        run: gradle projects -Ptrimly.desktop=true
+        run: gradle projects -PtrimlyDesktop=true
 
       - name: Download FFmpeg
         shell: pwsh
@@ -81,7 +81,7 @@ jobs:
           Get-ChildItem desktop/resources/windows
 
       - name: Build portable app
-        run: gradle :desktop:createDistributable -Ptrimly.desktop=true --stacktrace
+        run: gradle :desktop:createDistributable -PtrimlyDesktop=true --stacktrace
 
       - name: Zip portable app
         shell: pwsh
@@ -96,7 +96,7 @@ jobs:
 
       - name: Build installer
         continue-on-error: true
-        run: gradle :desktop:packageMsi -Ptrimly.desktop=true --stacktrace
+        run: gradle :desktop:packageMsi -PtrimlyDesktop=true --stacktrace
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
