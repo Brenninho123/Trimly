@@ -36,7 +36,7 @@ sealed interface ExportStatus {
     data object Idle : ExportStatus
     data class Running(val progress: Float) : ExportStatus
     data class Done(val uri: Uri?, val location: String) : ExportStatus
-    data class Failed(val message: String) : ExportStatus
+    data class Failed(val message: String?) : ExportStatus
 }
 
 data class EditorState(
@@ -246,7 +246,7 @@ class EditorViewModel(
             } catch (e: Exception) {
                 output.delete()
                 val detail = listOfNotNull(e.message, e.cause?.message).distinct().joinToString(": ")
-                _state.update { it.copy(export = ExportStatus.Failed(detail.ifBlank { "Export failed" })) }
+                _state.update { it.copy(export = ExportStatus.Failed(detail.ifBlank { null })) }
             }
         }
     }
