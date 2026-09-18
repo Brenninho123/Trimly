@@ -16,15 +16,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MusicOff
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,6 +39,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.brenninho.trimly.model.ExportOptions
+import com.brenninho.trimly.model.FilterGroup
+import com.brenninho.trimly.model.VideoFilter
 
 @Composable
 fun EditorMenu(
@@ -47,9 +51,15 @@ fun EditorMenu(
     onFlip: () -> Unit,
     onMute: () -> Unit,
     onQuality: () -> Unit,
+    onFilters: () -> Unit,
+    onEffects: () -> Unit,
+    onAdjust: () -> Unit,
     onReset: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val filterActive = options.filter != VideoFilter.NONE && options.filter.group == FilterGroup.FILTER
+    val effectActive = options.filter != VideoFilter.NONE && options.filter.group == FilterGroup.EFFECT
+
     Row(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = modifier
@@ -62,6 +72,27 @@ fun EditorMenu(
             active = true,
             enabled = false,
             onClick = {}
+        )
+        MenuItem(
+            icon = Icons.Filled.Palette,
+            label = if (filterActive) options.filter.label else "Filters",
+            active = filterActive,
+            enabled = enabled,
+            onClick = onFilters
+        )
+        MenuItem(
+            icon = Icons.Filled.AutoAwesome,
+            label = if (effectActive) options.filter.label else "Effects",
+            active = effectActive,
+            enabled = enabled,
+            onClick = onEffects
+        )
+        MenuItem(
+            icon = Icons.Filled.Tune,
+            label = "Adjust",
+            active = options.hasAdjustments,
+            enabled = enabled,
+            onClick = onAdjust
         )
         MenuItem(
             icon = Icons.Filled.RotateRight,
@@ -94,13 +125,6 @@ fun EditorMenu(
         MenuItem(
             icon = Icons.Filled.Speed,
             label = "Speed (soon)",
-            active = false,
-            enabled = false,
-            onClick = {}
-        )
-        MenuItem(
-            icon = Icons.Filled.AutoFixHigh,
-            label = "Filters (soon)",
             active = false,
             enabled = false,
             onClick = {}
