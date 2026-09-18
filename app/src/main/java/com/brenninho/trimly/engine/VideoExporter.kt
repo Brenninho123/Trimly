@@ -4,10 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
-import androidx.media3.effect.Presentation
-import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
@@ -85,7 +82,7 @@ class VideoExporter(private val context: Context) {
 
             val edited = EditedMediaItem.Builder(mediaItem)
                 .setRemoveAudio(options.muted)
-                .setEffects(Effects(emptyList(), videoEffects(options)))
+                .setEffects(Effects(emptyList(), EffectsFactory.build(options)))
                 .build()
 
             transformer.start(edited, output.absolutePath)
@@ -108,19 +105,5 @@ class VideoExporter(private val context: Context) {
                 }
             }
         }
-    }
-
-    private fun videoEffects(options: ExportOptions): List<Effect> {
-        val effects = ArrayList<Effect>()
-        if (options.hasVideoTransform) {
-            effects.add(
-                ScaleAndRotateTransformation.Builder()
-                    .setRotationDegrees(options.rotationDegrees.toFloat())
-                    .setScale(if (options.flipHorizontal) -1f else 1f, 1f)
-                    .build()
-            )
-        }
-        options.targetHeight?.let { effects.add(Presentation.createForHeight(it)) }
-        return effects
     }
 }
