@@ -427,11 +427,7 @@ fun EditorScreen(
                         }
                 )
 
-                AnimatedVisibility(
-                    visible = !playing && !buffering,
-                    enter = fadeIn() + scaleIn(),
-                    exit = fadeOut() + scaleOut()
-                ) {
+                OverlayVisibility(visible = !playing && !buffering) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
@@ -448,36 +444,26 @@ fun EditorScreen(
                     }
                 }
 
-                AnimatedVisibility(
-                    visible = buffering,
-                    enter = fadeIn(),
-                    exit = fadeOut()
-                ) {
+                OverlayVisibility(visible = buffering) {
                     CircularProgressIndicator(color = Color.White)
                 }
 
-                AnimatedVisibility(
+                OverlayVisibility(
                     visible = flashDirection == -1,
-                    enter = fadeIn() + scaleIn(),
-                    exit = fadeOut() + scaleOut(),
                     modifier = Modifier.align(Alignment.CenterStart)
                 ) {
                     SeekBubble(forward = false)
                 }
 
-                AnimatedVisibility(
+                OverlayVisibility(
                     visible = flashDirection == 1,
-                    enter = fadeIn() + scaleIn(),
-                    exit = fadeOut() + scaleOut(),
                     modifier = Modifier.align(Alignment.CenterEnd)
                 ) {
                     SeekBubble(forward = true)
                 }
 
-                AnimatedVisibility(
+                OverlayVisibility(
                     visible = state.sourceWidth > 0,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
                     modifier = Modifier.align(Alignment.TopStart)
                 ) {
                     InfoBadge(
@@ -486,10 +472,8 @@ fun EditorScreen(
                     )
                 }
 
-                AnimatedVisibility(
+                OverlayVisibility(
                     visible = previewMatrix != null,
-                    enter = fadeIn() + scaleIn(),
-                    exit = fadeOut() + scaleOut(),
                     modifier = Modifier.align(Alignment.TopEnd)
                 ) {
                     CompareButton(
