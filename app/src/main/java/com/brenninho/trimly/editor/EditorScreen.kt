@@ -6,12 +6,19 @@ import android.app.Application
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.net.Uri
+import android.view.Gravity
+import android.view.TextureView
+import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -62,11 +71,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import com.brenninho.trimly.data.FrameExtractor
-import com.brenninho.trimly.engine.EffectsFactory
 import com.brenninho.trimly.model.Clip
+import com.brenninho.trimly.model.ColorMath
 import java.util.Locale
 import kotlinx.coroutines.delay
 
@@ -78,6 +87,7 @@ fun EditorScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val application = context.applicationContext as Application
     val viewModel: EditorViewModel = viewModel(
         key = clip.uri.toString(),
@@ -100,25 +110,30 @@ fun EditorScreen(
 
     var playing by remember { mutableStateOf(false) }
     var positionMs by remember { mutableLongStateOf(0L) }
-    var effectsApplied by remember { mutableStateOf(false) }
+    var videoAspect by remember { mutableFloatStateOf(16f / 9f) }
     var showQuality by remember { mutableStateOf(false) }
     var showDiscard by remember { mutableStateOf(false) }
     var panel by remember { mutableStateOf<PanelTab?>(null) }
 
     val range by rememberUpdatedState(trimStart to trimEnd)
+    val layerPaint = remember { Paint() }
+    val previewMatrix = remember(options) { ColorMath.combined(options) }
 
     val frames = remember(clip.uri) {
         mutableStateListOf<ImageBitmap?>().apply { repeat(FRAME_COUNT) { add(null) } }
-    }
-
-    val visualOptions = remember(options) {
-        options.copy(muted = false, shortSide = null, targetHeight = null)
     }
 
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoAspect = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+                    viewModel.setSourceSize(videoSize.width, videoSize.height)
+                }
             }
         }
         exoPlayer.addListener(listener)
@@ -148,16 +163,6 @@ fun EditorScreen(
     LaunchedEffect(clip.uri) {
         FrameExtractor.extract(context, clip.uri, clip.durationMs, FRAME_COUNT) { index, bitmap ->
             frames[index] = bitmap
-        }
-    }
-
-    LaunchedEffect(exoPlayer, visualOptions) {
-        delay(120)
-        val effects = EffectsFactory.build(visualOptions)
-        if (effects.isNotEmpty() || effectsApplied) {
-            exoPlayer.setVideoEffects(effects)
-            effectsApplied = effects.isNotEmpty()
-            exoPlayer.seekTo(exoPlayer.currentPosition)
         }
     }
 
@@ -218,28 +223,69 @@ fun EditorScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Box(
+            BoxWithConstraints(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .background(Color.Black)
             ) {
+                val turned = options.rotationDegrees % 180 != 0
+                val availableWidth = maxWidth.value
+                val availableHeight = maxHeight.value
+                val ratio = videoAspect.coerceAtLeast(0.1f)
+
+                val viewHeight = if (turned) {
+                    minOf(availableWidth, availableHeight / ratio)
+                } else {
+                    minOf(availableWidth, availableHeight * ratio) / ratio
+                }
+                val viewWidth = viewHeight * ratio
+                val footprintWidth = if (turned) viewHeight else viewWidth
+                val footprintHeight = if (turned) viewWidth else viewHeight
+
+                val viewWidthPx = with(density) { viewWidth.dp.roundToPx() }.coerceAtLeast(1)
+                val viewHeightPx = with(density) { viewHeight.dp.roundToPx() }.coerceAtLeast(1)
+                val turnDegrees = options.rotationDegrees.toFloat()
+                val flipped = options.flipHorizontal
+                val matrix = previewMatrix
+
                 AndroidView(
                     factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            useController = false
-                            player = exoPlayer
+                        val texture = TextureView(ctx)
+                        exoPlayer.setVideoTextureView(texture)
+                        FrameLayout(ctx).apply {
+                            clipChildren = false
+                            clipToPadding = false
+                            addView(texture, FrameLayout.LayoutParams(1, 1, Gravity.CENTER))
                         }
                     },
-                    update = { view -> view.player = exoPlayer },
-                    modifier = Modifier.fillMaxSize()
+                    update = { frame ->
+                        val texture = frame.getChildAt(0) as TextureView
+                        val params = texture.layoutParams as FrameLayout.LayoutParams
+                        if (params.width != viewWidthPx || params.height != viewHeightPx) {
+                            params.width = viewWidthPx
+                            params.height = viewHeightPx
+                            texture.layoutParams = params
+                        }
+                        texture.rotation = if (flipped) turnDegrees else -turnDegrees
+                        texture.scaleX = if (flipped) -1f else 1f
+                        layerPaint.colorFilter = if (matrix != null) {
+                            ColorMatrixColorFilter(ColorMatrix(matrix))
+                        } else {
+                            null
+                        }
+                        texture.setLayerPaint(layerPaint)
+                    },
+                    modifier = Modifier.size(footprintWidth.dp, footprintHeight.dp)
                 )
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .clickable(enabled = !exporting, onClick = togglePlay)
                 )
+
                 if (!playing) {
                     Box(
                         contentAlignment = Alignment.Center,
