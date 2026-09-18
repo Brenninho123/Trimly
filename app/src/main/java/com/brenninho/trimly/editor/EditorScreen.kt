@@ -16,11 +16,10 @@ import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -29,6 +28,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -76,6 +76,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -92,6 +93,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import com.brenninho.trimly.data.FrameExtractor
+import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.model.Clip
 import com.brenninho.trimly.model.ColorMath
 import com.brenninho.trimly.model.VideoFilter
@@ -108,6 +110,7 @@ fun EditorScreen(
     clip: Clip,
     onBack: () -> Unit
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
@@ -134,6 +137,7 @@ fun EditorScreen(
         }
     }
 
+    var entered by remember { mutableStateOf(false) }
     var playing by remember { mutableStateOf(false) }
     var buffering by remember { mutableStateOf(true) }
     var positionMs by remember { mutableLongStateOf(0L) }
@@ -155,6 +159,11 @@ fun EditorScreen(
     val layerPaint = remember { Paint() }
     val previewMatrix = remember(options) { ColorMath.combined(options) }
     val shownMatrix = if (compareHeld) null else previewMatrix
+    val playerAlpha by animateFloatAsState(
+        targetValue = if (entered) 1f else 0f,
+        animationSpec = tween(450),
+        label = "playerAlpha"
+    )
 
     val frames = remember(clip.uri) {
         mutableStateListOf<ImageBitmap?>().apply { repeat(FRAME_COUNT) { add(null) } }
@@ -192,6 +201,10 @@ fun EditorScreen(
         exoPlayer.pause()
     }
 
+    LaunchedEffect(Unit) {
+        entered = true
+    }
+
     LaunchedEffect(exoPlayer) {
         exoPlayer.seekTo(trimStart)
         while (true) {
@@ -226,7 +239,12 @@ fun EditorScreen(
         }
     }
 
+    val tick: () -> Unit = {
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
+
     val togglePlay: () -> Unit = {
+        tick()
         if (exoPlayer.isPlaying) {
             exoPlayer.pause()
         } else {
@@ -255,13 +273,13 @@ fun EditorScreen(
     val setStartHere: () -> Unit = {
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         viewModel.setStartAt(exoPlayer.currentPosition)
-        announce("Start set to ${formatTime(viewModel.state.value.clip.startMs)}")
+        announce(s.startSetTo(formatTime(viewModel.state.value.clip.startMs)))
     }
 
     val setEndHere: () -> Unit = {
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         viewModel.setEndAt(exoPlayer.currentPosition)
-        announce("End set to ${formatTime(viewModel.state.value.clip.endMs)}")
+        announce(s.endSetTo(formatTime(viewModel.state.value.clip.endMs)))
     }
 
     val requestBack: () -> Unit = {
@@ -273,32 +291,32 @@ fun EditorScreen(
     BackHandler(onBack = requestBack)
     BackHandler(enabled = panel != null) { panel = null }
 
-    val chips = remember(options, state.clip) {
+    val chips = remember(options, state.clip, s) {
         buildList {
             if (state.clip.isTrimmed) {
-                add(EditChip("trim", "Trim ${formatTime(state.clip.trimmedDurationMs)}") { viewModel.resetTrim() })
+                add(EditChip("trim", s.chipTrim(formatTime(state.clip.trimmedDurationMs))) { viewModel.resetTrim() })
             }
             if (options.filter != VideoFilter.NONE) {
                 val label = if (options.filter.adjustable) {
-                    "${options.filter.label} ${(options.filterIntensity * 100).roundToInt()}%"
+                    "${s.filterName(options.filter)} ${(options.filterIntensity * 100).roundToInt()}%"
                 } else {
-                    options.filter.label
+                    s.filterName(options.filter)
                 }
                 add(EditChip("filter", label) { viewModel.setFilter(VideoFilter.NONE) })
             }
             if (options.hasAdjustments) {
-                add(EditChip("adjust", "Adjust") { viewModel.resetAdjustments() })
+                add(EditChip("adjust", s.toolAdjust) { viewModel.resetAdjustments() })
             }
             if (options.rotationDegrees % 360 != 0) {
-                add(EditChip("rotate", "Rotate ${options.rotationDegrees}°") {
+                add(EditChip("rotate", s.rotateLabel(options.rotationDegrees)) {
                     viewModel.updateOptions { it.copy(rotationDegrees = 0) }
                 })
             }
             if (options.flipHorizontal) {
-                add(EditChip("flip", "Flip") { viewModel.updateOptions { it.copy(flipHorizontal = false) } })
+                add(EditChip("flip", s.flip) { viewModel.updateOptions { it.copy(flipHorizontal = false) } })
             }
             if (options.muted) {
-                add(EditChip("mute", "Muted") { viewModel.updateOptions { it.copy(muted = false) } })
+                add(EditChip("mute", s.muted) { viewModel.updateOptions { it.copy(muted = false) } })
             }
             options.shortSide?.let { side ->
                 add(EditChip("quality", "${side}p") { viewModel.setQuality(null) })
@@ -311,25 +329,30 @@ fun EditorScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Text("Editor") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(s.editorTitle)
+                        EditedDot(visible = state.hasEdits)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = requestBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = s.back)
                     }
                 },
                 actions = {
                     IconButton(onClick = viewModel::undo, enabled = state.canUndo && !exporting) {
-                        Icon(Icons.Filled.Undo, contentDescription = "Undo")
+                        Icon(Icons.Filled.Undo, contentDescription = s.undo)
                     }
                     IconButton(onClick = viewModel::redo, enabled = state.canRedo && !exporting) {
-                        Icon(Icons.Filled.Redo, contentDescription = "Redo")
+                        Icon(Icons.Filled.Redo, contentDescription = s.redo)
                     }
                     Button(
                         onClick = viewModel::startExport,
                         enabled = state.canExport,
                         modifier = Modifier.padding(start = 4.dp, end = 8.dp)
                     ) {
-                        Text("Export")
+                        Text(s.export)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -358,6 +381,7 @@ fun EditorScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .graphicsLayer { alpha = playerAlpha }
                     .background(Color.Black)
             ) {
                 val turned = options.rotationDegrees % 180 != 0
@@ -437,7 +461,7 @@ fun EditorScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = "Play",
+                            contentDescription = s.play,
                             tint = Color.White,
                             modifier = Modifier.size(36.dp)
                         )
@@ -485,102 +509,143 @@ fun EditorScreen(
 
             Spacer(Modifier.height(4.dp))
 
-            TransportBar(
-                playing = playing,
-                looping = looping,
-                enabled = !exporting,
-                positionLabel = formatTime(state.clip.relativePosition(positionMs)),
-                onToStart = { exoPlayer.seekTo(trimStart) },
-                onBack = { seekBy(-SEEK_STEP_MS) },
-                onToggle = togglePlay,
-                onForward = { seekBy(SEEK_STEP_MS) },
-                onToEnd = { exoPlayer.seekTo(trimEnd) },
-                onLoop = { looping = !looping }
-            )
+            EditorEntrance(visible = entered, delayMillis = 80) {
+                TransportBar(
+                    playing = playing,
+                    looping = looping,
+                    enabled = !exporting,
+                    positionLabel = formatTime(state.clip.relativePosition(positionMs)),
+                    onToStart = {
+                        tick()
+                        exoPlayer.seekTo(trimStart)
+                    },
+                    onBack = {
+                        tick()
+                        seekBy(-SEEK_STEP_MS)
+                    },
+                    onToggle = togglePlay,
+                    onForward = {
+                        tick()
+                        seekBy(SEEK_STEP_MS)
+                    },
+                    onToEnd = {
+                        tick()
+                        exoPlayer.seekTo(trimEnd)
+                    },
+                    onLoop = {
+                        tick()
+                        looping = !looping
+                    }
+                )
+            }
 
             Spacer(Modifier.height(4.dp))
 
-            TrimReadout(
-                startMs = trimStart,
-                lengthMs = trimmed,
-                endMs = trimEnd,
-                enabled = !exporting,
-                onSetStart = setStartHere,
-                onSetEnd = setEndHere
-            )
+            EditorEntrance(visible = entered, delayMillis = 140) {
+                TrimReadout(
+                    startMs = trimStart,
+                    lengthMs = trimmed,
+                    endMs = trimEnd,
+                    enabled = !exporting,
+                    onSetStart = setStartHere,
+                    onSetEnd = setEndHere
+                )
+            }
 
             Spacer(Modifier.height(8.dp))
 
-            TrimTimeline(
-                durationMs = clip.durationMs,
-                startMs = trimStart,
-                endMs = trimEnd,
-                positionMs = positionMs,
-                frames = frames,
-                enabled = !exporting,
-                onDragStarted = {
-                    exoPlayer.pause()
-                    viewModel.beginRangeEdit()
-                },
-                onStartChange = { ms ->
-                    viewModel.setRange(ms, trimEnd)
-                    exoPlayer.seekTo(ms)
-                },
-                onEndChange = { ms ->
-                    viewModel.setRange(trimStart, ms)
-                    exoPlayer.seekTo(ms)
-                },
-                onSeek = { ms -> exoPlayer.seekTo(ms) },
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+            EditorEntrance(visible = entered, delayMillis = 200) {
+                TrimTimeline(
+                    durationMs = clip.durationMs,
+                    startMs = trimStart,
+                    endMs = trimEnd,
+                    positionMs = positionMs,
+                    frames = frames,
+                    enabled = !exporting,
+                    onDragStarted = {
+                        exoPlayer.pause()
+                        viewModel.beginRangeEdit()
+                    },
+                    onStartChange = { ms ->
+                        viewModel.setRange(ms, trimEnd)
+                        exoPlayer.seekTo(ms)
+                    },
+                    onEndChange = { ms ->
+                        viewModel.setRange(trimStart, ms)
+                        exoPlayer.seekTo(ms)
+                    },
+                    onSeek = { ms -> exoPlayer.seekTo(ms) },
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
 
             EditChipsRow(chips = chips, enabled = !exporting)
 
             HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
 
-            AnimatedContent(
-                targetState = panel != null,
-                transitionSpec = {
-                    (slideInVertically(tween(280)) { it / 2 } + fadeIn(tween(220))) togetherWith
-                        (slideOutVertically(tween(220)) { it / 2 } + fadeOut(tween(160)))
-                },
-                label = "bottomArea"
-            ) { showPanel ->
-                if (showPanel) {
-                    StylePanel(
-                        tab = panel ?: lastPanel,
-                        options = options,
-                        previewFrame = frames.getOrNull(FRAME_COUNT / 2) ?: frames.firstOrNull { it != null },
-                        enabled = !exporting,
-                        onTabChange = { panel = it },
-                        onFilter = viewModel::setFilter,
-                        onIntensity = viewModel::setFilterIntensity,
-                        onAdjust = viewModel::setAdjustment,
-                        onResetAdjust = viewModel::resetAdjustments,
-                        onClose = { panel = null }
-                    )
-                } else {
-                    EditorMenu(
-                        category = menuCategory,
-                        expanded = menuExpanded,
-                        options = options,
-                        hasEdits = state.hasEdits,
-                        enabled = !exporting,
-                        onCategoryChange = { menuCategoryIndex = it.ordinal },
-                        onExpandedChange = { menuExpanded = it },
-                        onRotate = viewModel::rotate,
-                        onFlip = viewModel::toggleFlip,
-                        onMute = viewModel::toggleMute,
-                        onQuality = { showQuality = true },
-                        onFilters = { panel = PanelTab.FILTERS },
-                        onEffects = { panel = PanelTab.EFFECTS },
-                        onAdjust = { panel = PanelTab.ADJUST },
-                        onReset = {
-                            viewModel.reset()
-                            exoPlayer.seekTo(0L)
-                        },
-                        onSoon = { announce("$it is coming soon") }
-                    )
+            EditorEntrance(visible = entered, delayMillis = 260) {
+                AnimatedContent(
+                    targetState = panel != null,
+                    transitionSpec = {
+                        (slideInVertically(tween(280)) { it / 2 } + fadeIn(tween(220))) togetherWith
+                            (slideOutVertically(tween(220)) { it / 2 } + fadeOut(tween(160)))
+                    },
+                    label = "bottomArea"
+                ) { showPanel ->
+                    if (showPanel) {
+                        StylePanel(
+                            tab = panel ?: lastPanel,
+                            options = options,
+                            previewFrame = frames.getOrNull(FRAME_COUNT / 2) ?: frames.firstOrNull { it != null },
+                            enabled = !exporting,
+                            onTabChange = {
+                                tick()
+                                panel = it
+                            },
+                            onFilter = {
+                                tick()
+                                viewModel.setFilter(it)
+                            },
+                            onIntensity = viewModel::setFilterIntensity,
+                            onAdjust = viewModel::setAdjustment,
+                            onResetAdjust = viewModel::resetAdjustments,
+                            onClose = { panel = null }
+                        )
+                    } else {
+                        EditorMenu(
+                            category = menuCategory,
+                            expanded = menuExpanded,
+                            options = options,
+                            hasEdits = state.hasEdits,
+                            enabled = !exporting,
+                            onCategoryChange = {
+                                tick()
+                                menuCategoryIndex = it.ordinal
+                            },
+                            onExpandedChange = { menuExpanded = it },
+                            onRotate = {
+                                tick()
+                                viewModel.rotate()
+                            },
+                            onFlip = {
+                                tick()
+                                viewModel.toggleFlip()
+                            },
+                            onMute = {
+                                tick()
+                                viewModel.toggleMute()
+                            },
+                            onQuality = { showQuality = true },
+                            onFilters = { panel = PanelTab.FILTERS },
+                            onEffects = { panel = PanelTab.EFFECTS },
+                            onAdjust = { panel = PanelTab.ADJUST },
+                            onReset = {
+                                viewModel.reset()
+                                exoPlayer.seekTo(0L)
+                            },
+                            onSoon = { announce(s.comingSoon(it)) }
+                        )
+                    }
                 }
             }
         }
@@ -609,16 +674,16 @@ fun EditorScreen(
     if (showDiscard) {
         AlertDialog(
             onDismissRequest = { showDiscard = false },
-            title = { Text("Discard changes?") },
-            text = { Text("Your trim and edits will be lost.") },
+            title = { Text(s.discardTitle) },
+            text = { Text(s.discardBody) },
             confirmButton = {
                 TextButton(onClick = {
                     showDiscard = false
                     onBack()
-                }) { Text("Discard") }
+                }) { Text(s.discardConfirm) }
             },
             dismissButton = {
-                TextButton(onClick = { showDiscard = false }) { Text("Keep editing") }
+                TextButton(onClick = { showDiscard = false }) { Text(s.keepEditing) }
             }
         )
     }
