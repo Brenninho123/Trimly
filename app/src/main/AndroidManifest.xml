@@ -11,7 +11,7 @@
         android:required="false" />
 
     <application
-        android:name=".TrimlyApp"
+        android:name=".TrimlyApplication"
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
         android:hardwareAccelerated="true"
