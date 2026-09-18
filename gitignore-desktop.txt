@@ -1,0 +1,6 @@
+desktop/resources/
+desktop/build/
+*.msi
+ffmpeg.zip
+ffmpeg-extract/
+Trimly-windows.zip
