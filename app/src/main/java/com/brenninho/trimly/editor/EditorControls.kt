@@ -397,3 +397,19 @@ fun InfoBadge(
             .padding(horizontal = 10.dp, vertical = 5.dp)
     )
 }
+
+@Composable
+fun OverlayVisibility(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut()
+    ) {
+        content()
+    }
+}
