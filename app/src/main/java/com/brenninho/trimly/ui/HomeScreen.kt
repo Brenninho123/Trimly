@@ -6,9 +6,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.provider.MediaStore
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
@@ -98,6 +96,7 @@ import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -171,6 +170,11 @@ import androidx.compose.ui.unit.dp
 import com.brenninho.trimly.MainState
 import com.brenninho.trimly.data.RecentVideo
 import com.brenninho.trimly.data.ThumbnailLoader
+import com.brenninho.trimly.i18n.AppStrings
+import com.brenninho.trimly.i18n.LocalStrings
+import com.brenninho.trimly.settings.DiscordProfile
+import com.brenninho.trimly.settings.SettingsActions
+import com.brenninho.trimly.settings.SettingsState
 import java.util.Calendar
 import java.util.Locale
 import kotlinx.coroutines.delay
@@ -181,53 +185,77 @@ private val Amber = Color(0xFFFFC857)
 private val LocalShimmer = compositionLocalOf<State<Float>?> { null }
 
 private data class Tool(
-    val label: String,
+    val id: String,
     val icon: ImageVector,
     val available: Boolean
 )
 
 private val tools = listOf(
-    Tool("Trim", Icons.Filled.ContentCut, true),
-    Tool("Filters", Icons.Filled.Palette, true),
-    Tool("Effects", Icons.Filled.AutoAwesome, true),
-    Tool("Adjust", Icons.Filled.Tune, true),
-    Tool("Rotate", Icons.Filled.RotateRight, true),
-    Tool("Quality", Icons.Filled.HighQuality, true),
-    Tool("Merge", Icons.Filled.Layers, false),
-    Tool("Speed", Icons.Filled.Speed, false),
-    Tool("Text", Icons.Filled.TextFields, false)
+    Tool("trim", Icons.Filled.ContentCut, true),
+    Tool("filters", Icons.Filled.Palette, true),
+    Tool("effects", Icons.Filled.AutoAwesome, true),
+    Tool("adjust", Icons.Filled.Tune, true),
+    Tool("rotate", Icons.Filled.RotateRight, true),
+    Tool("quality", Icons.Filled.HighQuality, true),
+    Tool("merge", Icons.Filled.Layers, false),
+    Tool("speed", Icons.Filled.Speed, false),
+    Tool("text", Icons.Filled.TextFields, false)
 )
 
-private val tips = listOf(
-    "Long-press a video to select several at once",
-    "Add videos to Favorites to keep them on top",
-    "Use Adjust in the editor to tune brightness and warmth",
-    "Export at 720p to get smaller files",
-    "Drag the orange handles to set the exact cut"
-)
-
-private val bucketLabels = listOf("Today", "Yesterday", "Earlier this week", "Older")
-
-private enum class SortMode(val label: String) {
-    RECENT("Last opened"),
-    OLDEST("Oldest opened"),
-    NAME("Name A-Z"),
-    NAME_DESC("Name Z-A"),
-    LONGEST("Longest first"),
-    SHORTEST("Shortest first")
+private fun toolLabel(s: AppStrings, id: String): String = when (id) {
+    "trim" -> s.toolTrim
+    "filters" -> s.toolFilters
+    "effects" -> s.toolEffects
+    "adjust" -> s.toolAdjust
+    "rotate" -> s.toolRotate
+    "quality" -> s.toolQuality
+    "merge" -> s.toolMerge
+    "speed" -> s.toolSpeed
+    else -> s.toolText
 }
 
-private enum class LayoutMode(val label: String, val icon: ImageVector) {
-    LIST("List", Icons.Filled.ViewAgenda),
-    GRID("Grid", Icons.Filled.GridView),
-    COMPACT("Compact", Icons.Filled.Menu)
+private enum class SortMode {
+    RECENT,
+    OLDEST,
+    NAME,
+    NAME_DESC,
+    LONGEST,
+    SHORTEST;
+
+    fun label(s: AppStrings): String = when (this) {
+        RECENT -> s.sortRecent
+        OLDEST -> s.sortOldest
+        NAME -> s.sortNameAsc
+        NAME_DESC -> s.sortNameDesc
+        LONGEST -> s.sortLongest
+        SHORTEST -> s.sortShortest
+    }
 }
 
-private enum class DurationFilter(val label: String) {
-    ALL("All"),
-    SHORT("Under 1 min"),
-    MEDIUM("1-5 min"),
-    LONG("Over 5 min");
+private enum class LayoutMode(val icon: ImageVector) {
+    LIST(Icons.Filled.ViewAgenda),
+    GRID(Icons.Filled.GridView),
+    COMPACT(Icons.Filled.Menu);
+
+    fun label(s: AppStrings): String = when (this) {
+        LIST -> s.layoutList
+        GRID -> s.layoutGrid
+        COMPACT -> s.layoutCompact
+    }
+}
+
+private enum class DurationFilter {
+    ALL,
+    SHORT,
+    MEDIUM,
+    LONG;
+
+    fun label(s: AppStrings): String = when (this) {
+        ALL -> s.filterAll
+        SHORT -> s.filterShort
+        MEDIUM -> s.filterMedium
+        LONG -> s.filterLong
+    }
 
     fun matches(durationMs: Long): Boolean = when (this) {
         ALL -> true
@@ -246,8 +274,8 @@ private enum class BarMode {
 private sealed interface Entry {
     val key: String
 
-    data class Header(val label: String) : Entry {
-        override val key: String get() = "header_$label"
+    data class Header(val id: String, val label: String) : Entry {
+        override val key: String get() = "header_$id"
     }
 
     data class Video(val item: RecentVideo) : Entry {
@@ -284,12 +312,6 @@ private class HomePrefs(context: Context) {
             prefs.edit().putBoolean("compact", value).apply()
         }
 
-    var tipHidden: Boolean
-        get() = prefs.getBoolean("tip_hidden", false)
-        set(value) {
-            prefs.edit().putBoolean("tip_hidden", value).apply()
-        }
-
     var favorites: Set<String>
         get() = prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet()
         set(value) {
@@ -302,6 +324,8 @@ fun HomeScreen(
     state: MainState,
     recents: List<RecentVideo>,
     gridMode: Boolean,
+    settings: SettingsState,
+    actions: SettingsActions,
     onPick: (Uri) -> Unit,
     onOpenRecent: (RecentVideo) -> Unit,
     onRemoveRecent: (RecentVideo) -> Unit,
@@ -309,6 +333,7 @@ fun HomeScreen(
     onToggleGrid: () -> Unit,
     onDismissError: () -> Unit
 ) {
+    val s = LocalStrings.current
     val context = LocalContext.current
     val prefs = remember { HomePrefs(context) }
     val haptics = LocalHapticFeedback.current
@@ -319,14 +344,13 @@ fun HomeScreen(
     val listState = rememberLazyGridState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    var showAbout by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     var showClear by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var sortIndex by remember { mutableIntStateOf(prefs.sortIndex) }
     var filterIndex by remember { mutableIntStateOf(prefs.filterIndex) }
     var compact by remember { mutableStateOf(prefs.compact) }
-    var tipHidden by remember { mutableStateOf(prefs.tipHidden) }
     var favorites by remember { mutableStateOf(prefs.favorites) }
     var favoritesOnly by remember { mutableStateOf(false) }
     var selectedUris by remember { mutableStateOf(emptySet<String>()) }
@@ -342,7 +366,11 @@ fun HomeScreen(
         gridMode -> LayoutMode.GRID
         else -> LayoutMode.LIST
     }
-    val greeting = remember { greetingForNow() }
+    val profile = settings.profile
+    val greeting = remember(s, profile?.displayName) {
+        val base = greetingForNow(s)
+        if (profile != null) "$base, ${profile.displayName}" else base
+    }
 
     val available = remember(recents, hidden) { recents.filter { it.uri !in hidden } }
 
@@ -378,9 +406,9 @@ fun HomeScreen(
     val filtersActive = query.isNotBlank() || durationFilter != DurationFilter.ALL || favoritesOnly
     val grouped = sortMode == SortMode.RECENT && !filtersActive
 
-    val entries = remember(visible, favorites, grouped) {
+    val entries = remember(visible, favorites, grouped, s) {
         val (favoriteItems, others) = visible.partition { it.uri in favorites }
-        buildEntries(favoriteItems, others, grouped, System.currentTimeMillis())
+        buildEntries(favoriteItems, others, grouped, System.currentTimeMillis(), s)
     }
 
     val latest = remember(available) { available.maxByOrNull { it.openedAt } }
@@ -428,7 +456,7 @@ fun HomeScreen(
         try {
             recorder.launch(Intent(MediaStore.ACTION_VIDEO_CAPTURE))
         } catch (e: ActivityNotFoundException) {
-            scope.launch { snackbar.showSnackbar("No camera app found") }
+            scope.launch { snackbar.showSnackbar(s.noCameraApp) }
         }
     }
 
@@ -494,8 +522,8 @@ fun HomeScreen(
             selectedUris = selectedUris - uris
             scope.launch {
                 val result = snackbar.showSnackbar(
-                    message = if (items.size == 1) "Removed from recent" else "${items.size} videos removed",
-                    actionLabel = "Undo",
+                    message = if (items.size == 1) s.removedOne else s.removedMany(items.size),
+                    actionLabel = s.undo,
                     withDismissAction = false,
                     duration = SnackbarDuration.Short
                 )
@@ -509,7 +537,7 @@ fun HomeScreen(
         if (tool.available) {
             pickFromLibrary()
         } else {
-            scope.launch { snackbar.showSnackbar("${tool.label} is coming soon") }
+            scope.launch { snackbar.showSnackbar(s.comingSoon(toolLabel(s, tool.id))) }
         }
     }
 
@@ -519,7 +547,7 @@ fun HomeScreen(
 
     LaunchedEffect(state) {
         if (state is MainState.Failed) {
-            snackbar.showSnackbar(state.message)
+            snackbar.showSnackbar(s.openFailed)
             onDismissError()
         }
     }
@@ -550,11 +578,20 @@ fun HomeScreen(
                             actions = {
                                 if (available.isNotEmpty()) {
                                     IconButton(onClick = { searching = true }) {
-                                        Icon(Icons.Filled.Search, contentDescription = "Search")
+                                        Icon(Icons.Filled.Search, contentDescription = s.search)
                                     }
                                 }
-                                IconButton(onClick = { showAbout = true }) {
-                                    Icon(Icons.Filled.Info, contentDescription = "About")
+                                if (profile != null) {
+                                    IconButton(onClick = { showSettings = true }) {
+                                        AvatarImage(
+                                            url = profile.avatarUrl,
+                                            name = profile.displayName,
+                                            size = 30.dp
+                                        )
+                                    }
+                                }
+                                IconButton(onClick = { showSettings = true }) {
+                                    Icon(Icons.Filled.Settings, contentDescription = s.settings)
                                 }
                             },
                             colors = TopAppBarDefaults.largeTopAppBarColors(
@@ -570,6 +607,7 @@ fun HomeScreen(
                             title = {
                                 SearchField(
                                     query = query,
+                                    placeholder = s.searchPlaceholder,
                                     onQueryChange = { query = it },
                                     focusRequester = focusRequester,
                                     onSubmit = { focusManager.clearFocus() }
@@ -577,13 +615,13 @@ fun HomeScreen(
                             },
                             navigationIcon = {
                                 IconButton(onClick = closeSearch) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close search")
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = s.closeSearch)
                                 }
                             },
                             actions = {
                                 if (query.isNotEmpty()) {
                                     IconButton(onClick = { query = "" }) {
-                                        Icon(Icons.Filled.Close, contentDescription = "Clear text")
+                                        Icon(Icons.Filled.Close, contentDescription = s.clearText)
                                     }
                                 }
                             },
@@ -606,16 +644,16 @@ fun HomeScreen(
                                                 (slideOutVertically { -it } + fadeOut())
                                         },
                                         label = "selectedCount"
-                                    ) { count -> Text("$count selected") }
+                                    ) { count -> Text(s.selectedCount(count)) }
                                 },
                                 navigationIcon = {
                                     IconButton(onClick = clearSelection) {
-                                        Icon(Icons.Filled.Close, contentDescription = "Cancel selection")
+                                        Icon(Icons.Filled.Close, contentDescription = s.cancelSelection)
                                     }
                                 },
                                 actions = {
                                     IconButton(onClick = { selectedUris = visible.map { it.uri }.toSet() }) {
-                                        Icon(Icons.Filled.SelectAll, contentDescription = "Select all")
+                                        Icon(Icons.Filled.SelectAll, contentDescription = s.selectAll)
                                     }
                                     IconButton(onClick = {
                                         updateFavorites(
@@ -624,13 +662,13 @@ fun HomeScreen(
                                     }) {
                                         Icon(
                                             imageVector = if (allFavorite) Icons.Filled.StarBorder else Icons.Filled.Star,
-                                            contentDescription = if (allFavorite) "Remove from favorites" else "Add to favorites"
+                                            contentDescription = if (allFavorite) s.removeFromFavorites else s.addToFavorites
                                         )
                                     }
                                     IconButton(onClick = {
                                         removeWithUndo(available.filter { it.uri in activeSelection })
                                     }) {
-                                        Icon(Icons.Filled.Delete, contentDescription = "Remove selected")
+                                        Icon(Icons.Filled.Delete, contentDescription = s.removeSelected)
                                     }
                                 },
                                 colors = TopAppBarDefaults.topAppBarColors(
@@ -654,7 +692,7 @@ fun HomeScreen(
                         onClick = pickFromLibrary,
                         expanded = fabExpanded,
                         icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                        text = { Text("New video") }
+                        text = { Text(s.selectVideo) }
                     )
                 }
             },
@@ -676,6 +714,7 @@ fun HomeScreen(
                             HeroCard(
                                 busy = busy,
                                 greeting = greeting,
+                                profile = profile,
                                 onSelect = pickFromLibrary,
                                 onBrowse = browseFiles,
                                 onRecord = record
@@ -707,15 +746,10 @@ fun HomeScreen(
                         }
                     }
 
-                    if (!tipHidden) {
+                    if (settings.tipsEnabled) {
                         item(key = "tip", span = { GridItemSpan(maxLineSpan) }) {
                             Entrance(visible = entered, delayMillis = 200) {
-                                TipCard(
-                                    onDismiss = {
-                                        tipHidden = true
-                                        prefs.tipHidden = true
-                                    }
-                                )
+                                TipCard(onDismiss = { actions.onTips(false) })
                             }
                         }
                     }
@@ -735,8 +769,8 @@ fun HomeScreen(
                         sortMode = sortMode,
                         summary = when {
                             available.isEmpty() -> ""
-                            visible.size != available.size -> "${visible.size} of ${available.size} videos"
-                            else -> summary(available.size, totalMs)
+                            visible.size != available.size -> s.filteredSummary(visible.size, available.size)
+                            else -> summary(available.size, totalMs, s)
                         },
                         onSort = setSort,
                         onLayout = setLayout,
@@ -757,7 +791,7 @@ fun HomeScreen(
 
                 if (available.isEmpty()) {
                     item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                        EmptyRecents()
+                        EmptyRecents(onSelect = pickFromLibrary)
                     }
                 } else if (visible.isEmpty()) {
                     item(key = "no_results", span = { GridItemSpan(maxLineSpan) }) {
@@ -776,6 +810,7 @@ fun HomeScreen(
                         when (entry) {
                             is Entry.Header -> SectionLabel(
                                 label = entry.label,
+                                favorites = entry.id == "favorites",
                                 modifier = Modifier.animateItem()
                             )
 
@@ -809,19 +844,27 @@ fun HomeScreen(
         }
     }
 
+    if (showSettings) {
+        SettingsSheet(
+            settings = settings,
+            actions = actions,
+            onDismiss = { showSettings = false }
+        )
+    }
+
     if (showClear) {
         AlertDialog(
             onDismissRequest = { showClear = false },
-            title = { Text("Clear recent videos?") },
-            text = { Text("This only clears the list. Your videos are not deleted.") },
+            title = { Text(s.clearTitle) },
+            text = { Text(s.clearBody) },
             confirmButton = {
                 TextButton(onClick = {
                     showClear = false
                     onClearRecents()
-                }) { Text("Clear") }
+                }) { Text(s.clearConfirm) }
             },
             dismissButton = {
-                TextButton(onClick = { showClear = false }) { Text("Cancel") }
+                TextButton(onClick = { showClear = false }) { Text(s.cancel) }
             }
         )
     }
@@ -832,37 +875,20 @@ fun HomeScreen(
             title = { Text(item.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             text = {
                 Column {
-                    DetailLine("Duration", clock(item.durationMs))
+                    DetailLine(s.detailsDuration, clock(item.durationMs))
                     DetailLine(
-                        "Last opened",
+                        s.detailsLastOpened,
                         DateUtils.formatDateTime(
                             context,
                             item.openedAt,
                             DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_YEAR
                         )
                     )
-                    DetailLine("Favorite", if (item.uri in favorites) "Yes" else "No")
+                    DetailLine(s.detailsFavorite, if (item.uri in favorites) s.yes else s.no)
                 }
             },
             confirmButton = {
-                TextButton(onClick = { detailsFor = null }) { Text("Close") }
-            }
-        )
-    }
-
-    if (showAbout) {
-        AlertDialog(
-            onDismissRequest = { showAbout = false },
-            title = { Text("Trimly") },
-            text = {
-                Column {
-                    Text("Version ${appVersion(context)}")
-                    Spacer(Modifier.height(8.dp))
-                    Text("A free video editor that runs entirely on your device. No account, no upload, no watermark.")
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showAbout = false }) { Text("Close") }
+                TextButton(onClick = { detailsFor = null }) { Text(s.close) }
             }
         )
     }
@@ -909,6 +935,7 @@ private fun Entrance(
 @Composable
 private fun SearchField(
     query: String,
+    placeholder: String,
     onQueryChange: (String) -> Unit,
     focusRequester: FocusRequester,
     onSubmit: () -> Unit
@@ -917,7 +944,7 @@ private fun SearchField(
         value = query,
         onValueChange = onQueryChange,
         singleLine = true,
-        placeholder = { Text("Search videos") },
+        placeholder = { Text(placeholder) },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
         colors = TextFieldDefaults.colors(
@@ -936,10 +963,12 @@ private fun SearchField(
 private fun HeroCard(
     busy: Boolean,
     greeting: String,
+    profile: DiscordProfile?,
     onSelect: () -> Unit,
     onBrowse: () -> Unit,
     onRecord: () -> Unit
 ) {
+    val s = LocalStrings.current
     val pulse = rememberInfiniteTransition(label = "heroPulse")
     val ringScale by pulse.animateFloat(
         initialValue = 1f,
@@ -984,29 +1013,34 @@ private fun HeroCard(
                         .clip(CircleShape)
                         .background(primary)
                 )
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(primary.copy(alpha = 0.16f))
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.VideoLibrary,
-                        contentDescription = null,
-                        tint = primary,
-                        modifier = Modifier.size(36.dp)
-                    )
+                if (profile != null) {
+                    AvatarImage(url = profile.avatarUrl, name = profile.displayName, size = 72.dp)
+                } else {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(primary.copy(alpha = 0.16f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.VideoLibrary,
+                            contentDescription = null,
+                            tint = primary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(16.dp))
             Text(
                 text = greeting,
                 style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
             )
             Text(
-                text = "Pick a video to edit, or record a new one",
+                text = s.heroSubtitle,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -1026,7 +1060,7 @@ private fun HeroCard(
                     ) {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         Text(
-                            text = "Reading video",
+                            text = s.readingVideo,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 12.dp)
@@ -1042,7 +1076,7 @@ private fun HeroCard(
                         ) {
                             Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Select video")
+                            Text(s.selectVideo)
                         }
                         Spacer(Modifier.height(12.dp))
                         Row(
@@ -1052,12 +1086,12 @@ private fun HeroCard(
                             OutlinedButton(onClick = onBrowse, modifier = Modifier.weight(1f)) {
                                 Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Files")
+                                Text(s.files)
                             }
                             OutlinedButton(onClick = onRecord, modifier = Modifier.weight(1f)) {
                                 Icon(Icons.Filled.Videocam, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Record")
+                                Text(s.record)
                             }
                         }
                     }
@@ -1073,6 +1107,8 @@ private fun ContinueCard(
     enabled: Boolean,
     onOpen: () -> Unit
 ) {
+    val s = LocalStrings.current
+    val context = LocalContext.current
     val source = remember { MutableInteractionSource() }
 
     Card(
@@ -1114,7 +1150,7 @@ private fun ContinueCard(
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Continue editing",
+                    text = s.continueEditing,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -1126,7 +1162,7 @@ private fun ContinueCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${clock(item.durationMs)} · ${relativeTime(item.openedAt)}",
+                    text = "${clock(item.durationMs)} · ${relativeTime(s, item.openedAt, context)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1141,6 +1177,7 @@ private fun StatsRow(
     totalMs: Long,
     favorites: Int
 ) {
+    val s = LocalStrings.current
     val animatedCount by animateIntAsState(count, tween(700), label = "statCount")
     val animatedMinutes by animateIntAsState((totalMs / 60_000L).toInt(), tween(900), label = "statMinutes")
     val animatedFavorites by animateIntAsState(favorites, tween(700), label = "statFavorites")
@@ -1152,19 +1189,19 @@ private fun StatsRow(
         StatCard(
             icon = Icons.Filled.Movie,
             value = animatedCount.toString(),
-            label = if (count == 1) "Video" else "Videos",
+            label = if (count == 1) s.statVideo else s.statVideos,
             modifier = Modifier.weight(1f)
         )
         StatCard(
             icon = Icons.Filled.Schedule,
-            value = minutesLabel(animatedMinutes),
-            label = "Total time",
+            value = minutesLabel(animatedMinutes, s),
+            label = s.statTotalTime,
             modifier = Modifier.weight(1f)
         )
         StatCard(
             icon = Icons.Filled.Star,
             value = animatedFavorites.toString(),
-            label = "Favorites",
+            label = s.statFavorites,
             modifier = Modifier.weight(1f)
         )
     }
@@ -1207,12 +1244,13 @@ private fun StatCard(
 
 @Composable
 private fun TipCard(onDismiss: () -> Unit) {
+    val s = LocalStrings.current
     var index by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(s) {
         while (true) {
             delay(5000)
-            index = (index + 1) % tips.size
+            index = (index + 1) % s.tips.size
         }
     }
 
@@ -1242,7 +1280,7 @@ private fun TipCard(onDismiss: () -> Unit) {
                 label = "tip"
             ) { current ->
                 Text(
-                    text = tips[current],
+                    text = s.tips[current % s.tips.size],
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -1250,7 +1288,7 @@ private fun TipCard(onDismiss: () -> Unit) {
             IconButton(onClick = onDismiss) {
                 Icon(
                     imageVector = Icons.Filled.Close,
-                    contentDescription = "Dismiss tip",
+                    contentDescription = s.close,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -1263,15 +1301,16 @@ private fun ToolsRow(
     enabled: Boolean,
     onTool: (Tool) -> Unit
 ) {
+    val s = LocalStrings.current
     Column {
         Text(
-            text = "Tools",
+            text = s.toolsTitle,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(Modifier.height(8.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(tools, key = { it.label }) { tool ->
+            items(tools, key = { it.id }) { tool ->
                 ToolCard(tool = tool, enabled = enabled, onClick = { onTool(tool) })
             }
         }
@@ -1284,6 +1323,7 @@ private fun ToolCard(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
+    val s = LocalStrings.current
     val source = remember { MutableInteractionSource() }
     val tint = if (tool.available) {
         MaterialTheme.colorScheme.primary
@@ -1298,7 +1338,7 @@ private fun ToolCard(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier
-            .width(88.dp)
+            .width(92.dp)
             .pressScale(source)
     ) {
         Column(
@@ -1318,15 +1358,17 @@ private fun ToolCard(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                text = tool.label,
+                text = toolLabel(s, tool.id),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = if (tool.available) " " else "Soon",
+                text = if (tool.available) " " else s.soon,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1
             )
         }
     }
@@ -1343,13 +1385,14 @@ private fun RecentHeader(
     onLayout: (LayoutMode) -> Unit,
     onClear: () -> Unit
 ) {
+    val s = LocalStrings.current
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = "Recent",
+                text = s.recent,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.weight(1f)
@@ -1361,7 +1404,7 @@ private fun RecentHeader(
                     IconButton(onClick = onClear) {
                         Icon(
                             imageVector = Icons.Filled.DeleteSweep,
-                            contentDescription = "Clear recent",
+                            contentDescription = s.clearRecent,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -1389,19 +1432,20 @@ private fun SortMenu(
     current: SortMode,
     onSelect: (SortMode) -> Unit
 ) {
+    val s = LocalStrings.current
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Sort,
-                contentDescription = "Sort",
+                contentDescription = s.sort,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             SortMode.entries.forEach { mode ->
                 DropdownMenuItem(
-                    text = { Text(mode.label) },
+                    text = { Text(mode.label(s)) },
                     leadingIcon = {
                         if (mode == current) {
                             Icon(Icons.Filled.Check, contentDescription = null)
@@ -1424,6 +1468,7 @@ private fun LayoutMenu(
     current: LayoutMode,
     onSelect: (LayoutMode) -> Unit
 ) {
+    val s = LocalStrings.current
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
@@ -1434,7 +1479,7 @@ private fun LayoutMenu(
             ) { mode ->
                 Icon(
                     imageVector = mode.icon,
-                    contentDescription = "Layout",
+                    contentDescription = s.layout,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -1442,7 +1487,7 @@ private fun LayoutMenu(
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             LayoutMode.entries.forEach { mode ->
                 DropdownMenuItem(
-                    text = { Text(mode.label) },
+                    text = { Text(mode.label(s)) },
                     leadingIcon = { Icon(mode.icon, contentDescription = null) },
                     trailingIcon = {
                         if (mode == current) Icon(Icons.Filled.Check, contentDescription = null)
@@ -1464,6 +1509,7 @@ private fun FilterRow(
     onFilter: (DurationFilter) -> Unit,
     onFavorites: () -> Unit
 ) {
+    val s = LocalStrings.current
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
@@ -1473,7 +1519,7 @@ private fun FilterRow(
         FilterChip(
             selected = favoritesOnly,
             onClick = onFavorites,
-            label = { Text("Favorites") },
+            label = { Text(s.favorites) },
             leadingIcon = {
                 Icon(
                     imageVector = if (favoritesOnly) Icons.Filled.Star else Icons.Filled.StarBorder,
@@ -1486,7 +1532,7 @@ private fun FilterRow(
             FilterChip(
                 selected = filter == item,
                 onClick = { onFilter(item) },
-                label = { Text(item.label) }
+                label = { Text(item.label(s)) }
             )
         }
     }
@@ -1495,6 +1541,7 @@ private fun FilterRow(
 @Composable
 private fun SectionLabel(
     label: String,
+    favorites: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -1503,7 +1550,7 @@ private fun SectionLabel(
             .fillMaxWidth()
             .padding(top = 4.dp)
     ) {
-        if (label == "Favorites") {
+        if (favorites) {
             Icon(
                 imageVector = Icons.Filled.Star,
                 contentDescription = null,
@@ -1521,7 +1568,8 @@ private fun SectionLabel(
 }
 
 @Composable
-private fun EmptyRecents() {
+private fun EmptyRecents(onSelect: () -> Unit) {
+    val s = LocalStrings.current
     val bob = rememberInfiniteTransition(label = "bob")
     val offsetY by bob.animateFloat(
         initialValue = -6f,
@@ -1549,15 +1597,22 @@ private fun EmptyRecents() {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "No recent videos",
+            text = s.emptyTitle,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            text = "Videos you open will show up here",
+            text = s.emptySubtitle,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(onClick = onSelect) {
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(s.selectVideo)
+        }
     }
 }
 
@@ -1566,6 +1621,7 @@ private fun NoResults(
     query: String,
     filtered: Boolean
 ) {
+    val s = LocalStrings.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -1580,14 +1636,14 @@ private fun NoResults(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = if (query.isNotBlank()) "No videos match \"${query.trim()}\"" else "No videos match these filters",
+            text = if (query.isNotBlank()) s.noMatchQuery(query.trim()) else s.noMatchFilters,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
         if (filtered) {
             Text(
-                text = "Try another filter or clear the search",
+                text = s.tryAnotherFilter,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -1605,6 +1661,7 @@ private fun ItemSurface(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
+    val s = LocalStrings.current
     val source = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(16.dp)
     val primary = MaterialTheme.colorScheme.primary
@@ -1631,7 +1688,7 @@ private fun ItemSurface(
                 interactionSource = source,
                 indication = LocalIndication.current,
                 enabled = enabled,
-                onLongClickLabel = "Select",
+                onLongClickLabel = s.menuSelect,
                 onLongClick = onLongClick,
                 onClick = onClick
             )
@@ -1656,6 +1713,9 @@ private fun RecentItem(
     onRemove: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val s = LocalStrings.current
+    val context = LocalContext.current
+
     ItemSurface(
         selected = selected,
         enabled = enabled,
@@ -1686,7 +1746,7 @@ private fun RecentItem(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = relativeTime(item.openedAt),
+                            text = relativeTime(s, item.openedAt, context),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -1726,7 +1786,7 @@ private fun RecentItem(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = relativeTime(item.openedAt),
+                        text = relativeTime(s, item.openedAt, context),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1763,7 +1823,7 @@ private fun RecentItem(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "${clock(item.durationMs)} · ${relativeTime(item.openedAt)}",
+                        text = "${clock(item.durationMs)} · ${relativeTime(s, item.openedAt, context)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -1773,7 +1833,7 @@ private fun RecentItem(
                 if (favorite) {
                     Icon(
                         imageVector = Icons.Filled.Star,
-                        contentDescription = "Favorite",
+                        contentDescription = s.detailsFavorite,
                         tint = Amber,
                         modifier = Modifier.size(18.dp)
                     )
@@ -1822,6 +1882,7 @@ private fun Thumb(
     showDuration: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val s = LocalStrings.current
     Box(
         modifier = modifier
             .aspectRatio(16f / 9f)
@@ -1839,7 +1900,7 @@ private fun Thumb(
         if (favorite && showDuration) {
             Icon(
                 imageVector = Icons.Filled.Star,
-                contentDescription = "Favorite",
+                contentDescription = s.detailsFavorite,
                 tint = Amber,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -1847,14 +1908,27 @@ private fun Thumb(
                     .size(18.dp)
             )
         }
-        AnimatedVisibility(
+        SelectionBadge(
             visible = selecting,
-            enter = fadeIn() + scaleIn(),
-            exit = fadeOut() + scaleOut(),
+            selected = selected,
             modifier = Modifier.align(Alignment.TopStart)
-        ) {
-            SelectionMark(selected = selected)
-        }
+        )
+    }
+}
+
+@Composable
+private fun SelectionBadge(
+    visible: Boolean,
+    selected: Boolean,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+        modifier = modifier
+    ) {
+        SelectionMark(selected = selected)
     }
 }
 
@@ -1867,7 +1941,7 @@ private fun SelectionMark(selected: Boolean) {
     )
     Icon(
         imageVector = if (selected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
-        contentDescription = if (selected) "Selected" else "Not selected",
+        contentDescription = null,
         tint = if (selected) MaterialTheme.colorScheme.primary else Color.White,
         modifier = Modifier
             .padding(6.dp)
@@ -1888,18 +1962,19 @@ private fun RecentMenu(
     onDetails: () -> Unit,
     onRemove: () -> Unit
 ) {
+    val s = LocalStrings.current
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(
                 imageVector = Icons.Filled.MoreVert,
-                contentDescription = "More",
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
-                text = { Text("Select") },
+                text = { Text(s.menuSelect) },
                 leadingIcon = { Icon(Icons.Filled.CheckCircle, contentDescription = null) },
                 onClick = {
                     expanded = false
@@ -1907,7 +1982,7 @@ private fun RecentMenu(
                 }
             )
             DropdownMenuItem(
-                text = { Text(if (favorite) "Remove from favorites" else "Add to favorites") },
+                text = { Text(if (favorite) s.removeFromFavorites else s.addToFavorites) },
                 leadingIcon = {
                     Icon(
                         imageVector = if (favorite) Icons.Filled.StarBorder else Icons.Filled.Star,
@@ -1920,7 +1995,7 @@ private fun RecentMenu(
                 }
             )
             DropdownMenuItem(
-                text = { Text("Details") },
+                text = { Text(s.menuDetails) },
                 leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) },
                 onClick = {
                     expanded = false
@@ -1928,7 +2003,7 @@ private fun RecentMenu(
                 }
             )
             DropdownMenuItem(
-                text = { Text("Remove from recent") },
+                text = { Text(s.menuRemove) },
                 leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
                 onClick = {
                     expanded = false
@@ -2038,12 +2113,14 @@ private fun buildEntries(
     favoriteItems: List<RecentVideo>,
     others: List<RecentVideo>,
     grouped: Boolean,
-    now: Long
+    now: Long,
+    s: AppStrings
 ): List<Entry> {
-    val result = ArrayList<Entry>(favoriteItems.size + others.size + bucketLabels.size + 2)
+    val labels = listOf(s.bucketToday, s.bucketYesterday, s.bucketWeek, s.bucketOlder)
+    val result = ArrayList<Entry>(favoriteItems.size + others.size + labels.size + 2)
 
     if (favoriteItems.isNotEmpty()) {
-        result.add(Entry.Header("Favorites"))
+        result.add(Entry.Header("favorites", s.favorites))
         favoriteItems.forEach { result.add(Entry.Video(it)) }
     }
 
@@ -2059,12 +2136,14 @@ private fun buildEntries(
             }
             if (bucket != current) {
                 current = bucket
-                result.add(Entry.Header(bucketLabels[bucket]))
+                result.add(Entry.Header("bucket_$bucket", labels[bucket]))
             }
             result.add(Entry.Video(item))
         }
     } else {
-        if (favoriteItems.isNotEmpty() && others.isNotEmpty()) result.add(Entry.Header("All videos"))
+        if (favoriteItems.isNotEmpty() && others.isNotEmpty()) {
+            result.add(Entry.Header("all", s.allVideos))
+        }
         others.forEach { result.add(Entry.Video(it)) }
     }
 
@@ -2086,23 +2165,23 @@ private fun dayBounds(now: Long): DayBounds {
     return DayBounds(today = today, yesterday = yesterday, week = week)
 }
 
-private fun greetingForNow(): String {
+private fun greetingForNow(s: AppStrings): String {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     return when {
-        hour < 5 -> "Working late?"
-        hour < 12 -> "Good morning"
-        hour < 18 -> "Good afternoon"
-        else -> "Good evening"
+        hour < 5 -> s.greetingLate
+        hour < 12 -> s.greetingMorning
+        hour < 18 -> s.greetingAfternoon
+        else -> s.greetingEvening
     }
 }
 
-private fun minutesLabel(minutes: Int): String = when {
+private fun minutesLabel(minutes: Int, s: AppStrings): String = when {
     minutes >= 60 -> "%d h %02d m".format(Locale.ROOT, minutes / 60, minutes % 60)
     minutes > 0 -> "$minutes min"
-    else -> "<1 min"
+    else -> s.lessThanMinute
 }
 
-private fun summary(count: Int, totalMs: Long): String {
+private fun summary(count: Int, totalMs: Long, s: AppStrings): String {
     val totalMinutes = totalMs / 60_000
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
@@ -2111,8 +2190,7 @@ private fun summary(count: Int, totalMs: Long): String {
         totalMinutes > 0 -> "%d min".format(Locale.ROOT, totalMinutes)
         else -> "%d s".format(Locale.ROOT, totalMs / 1000)
     }
-    val noun = if (count == 1) "video" else "videos"
-    return "$count $noun · $length"
+    return "${s.videoCount(count)} · $length"
 }
 
 private fun clock(ms: Long): String {
@@ -2127,25 +2205,17 @@ private fun clock(ms: Long): String {
     }
 }
 
-private fun relativeTime(timestamp: Long): String =
-    DateUtils.getRelativeTimeSpanString(
-        timestamp,
-        System.currentTimeMillis(),
-        DateUtils.MINUTE_IN_MILLIS
-    ).toString()
-
-private fun appVersion(context: Context): String =
-    try {
-        val info = if (Build.VERSION.SDK_INT >= 33) {
-            context.packageManager.getPackageInfo(
-                context.packageName,
-                PackageManager.PackageInfoFlags.of(0)
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.getPackageInfo(context.packageName, 0)
-        }
-        info.versionName.orEmpty()
-    } catch (e: PackageManager.NameNotFoundException) {
-        ""
+private fun relativeTime(s: AppStrings, timestamp: Long, context: Context): String {
+    val minutes = (System.currentTimeMillis() - timestamp).coerceAtLeast(0L) / 60_000L
+    return when {
+        minutes < 1 -> s.justNow
+        minutes < 60 -> s.minutesAgo(minutes)
+        minutes < 60 * 24 -> s.hoursAgo(minutes / 60)
+        minutes < 60 * 24 * 7 -> s.daysAgo(minutes / (60 * 24))
+        else -> DateUtils.formatDateTime(
+            context,
+            timestamp,
+            DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH
+        )
     }
+}
