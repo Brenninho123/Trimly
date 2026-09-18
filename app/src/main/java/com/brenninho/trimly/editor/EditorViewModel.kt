@@ -8,8 +8,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.brenninho.trimly.engine.MediaSaver
 import com.brenninho.trimly.engine.VideoExporter
+import com.brenninho.trimly.model.Adjustment
 import com.brenninho.trimly.model.Clip
 import com.brenninho.trimly.model.ExportOptions
+import com.brenninho.trimly.model.VideoFilter
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -92,6 +94,28 @@ class EditorViewModel(
 
     fun setQuality(shortSide: Int?) {
         _state.update { it.copy(options = it.options.copy(shortSide = shortSide)) }
+    }
+
+    fun setFilter(filter: VideoFilter) {
+        _state.update {
+            if (it.options.filter == filter) {
+                it
+            } else {
+                it.copy(options = it.options.copy(filter = filter, filterIntensity = 1f))
+            }
+        }
+    }
+
+    fun setFilterIntensity(value: Float) {
+        _state.update { it.copy(options = it.options.copy(filterIntensity = value.coerceIn(0f, 1f))) }
+    }
+
+    fun setAdjustment(kind: Adjustment, value: Int) {
+        _state.update { it.copy(options = it.options.withAdjustment(kind, value.coerceIn(-100, 100))) }
+    }
+
+    fun resetAdjustments() {
+        _state.update { it.copy(options = it.options.clearAdjustments()) }
     }
 
     fun reset() {
