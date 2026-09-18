@@ -16,3 +16,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "Trimly"
 include(":app")
+
+if (providers.gradleProperty("trimly.desktop").isPresent) {
+    include(":desktop")
+}
