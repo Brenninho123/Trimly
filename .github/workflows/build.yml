@@ -134,10 +134,16 @@ jobs:
 
       - name: Verify APK
         run: |
+          set -eu
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          echo "Using build-tools: $BUILD_TOOLS"
           BADGING="$("$BUILD_TOOLS/aapt2" dump badging dist/Trimly-debug.apk)"
-          echo "$BADGING" | grep -q "package: name='${PACKAGE_NAME}'"
-          echo "$BADGING" | grep -q "sdkVersion:'${EXPECTED_MIN_SDK}'"
+          ACTUAL_PACKAGE="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$BADGING")"
+          ACTUAL_MIN_SDK="$(sed -n "s/^sdkVersion:'\([0-9]*\)'.*/\1/p" <<< "$BADGING")"
+          echo "Package: $ACTUAL_PACKAGE"
+          echo "Min SDK: $ACTUAL_MIN_SDK"
+          test "$ACTUAL_PACKAGE" = "$PACKAGE_NAME"
+          test "$ACTUAL_MIN_SDK" = "$EXPECTED_MIN_SDK"
           "$BUILD_TOOLS/apksigner" verify --verbose dist/Trimly-debug.apk
 
       - name: Write summary
