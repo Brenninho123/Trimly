@@ -324,18 +324,7 @@ private fun MenuItem(
             ) {
                 Icon(imageVector = entry.icon, contentDescription = null, tint = tint)
             }
-            AnimatedVisibility(
-                visible = entry.active && !entry.locked,
-                enter = scaleIn() + fadeIn(),
-                exit = scaleOut() + fadeOut()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                )
-            }
+            ActiveDot(visible = entry.active && !entry.locked)
         }
         Spacer(Modifier.height(4.dp))
         Text(
@@ -370,5 +359,21 @@ internal fun Modifier.pressScale(
     return this.graphicsLayer {
         scaleX = scale
         scaleY = scale
+    }
+}
+
+@Composable
+private fun ActiveDot(visible: Boolean) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = scaleIn() + fadeIn(),
+        exit = scaleOut() + fadeOut()
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary)
+        )
     }
 }
