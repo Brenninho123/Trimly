@@ -1,20 +1,111 @@
-name: Build
+name: Android CI
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: android-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GRADLE_VERSION: "8.9"
+  JAVA_VERSION: "17"
+  PACKAGE_NAME: com.brenninho.trimly
+  EXPECTED_MIN_SDK: "24"
+
 jobs:
+  lint:
+    name: Android Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      - name: Run lint
+        run: gradle lintDebug --stacktrace
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.sarif
+          if-no-files-found: ignore
+
+      - name: Upload SARIF to code scanning
+        if: always() && github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: app/build/reports/lint-results-debug.sarif
+          category: android-lint
+        continue-on-error: true
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      - name: Run unit tests
+        run: gradle testDebugUnitTest --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
+
   build:
+    name: Build APK
+    needs: [lint, test]
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -22,24 +113,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK 17
+      - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.9
+          gradle-version: ${{ env.GRADLE_VERSION }}
 
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
 
-      - name: Rename APK
+      - name: Collect APK
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/Trimly-debug.apk
+
+      - name: Verify APK
+        run: |
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          BADGING="$("$BUILD_TOOLS/aapt2" dump badging dist/Trimly-debug.apk)"
+          echo "$BADGING" | grep -q "package: name='${PACKAGE_NAME}'"
+          echo "$BADGING" | grep -q "sdkVersion:'${EXPECTED_MIN_SDK}'"
+          "$BUILD_TOOLS/apksigner" verify --verbose dist/Trimly-debug.apk
+
+      - name: Write summary
+        run: |
+          SIZE="$(du -h dist/Trimly-debug.apk | cut -f1)"
+          VERSION="$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)"
+          {
+            echo "### Trimly APK"
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Version | ${VERSION} |"
+            echo "| Size | ${SIZE} |"
+            echo "| Package | ${PACKAGE_NAME} |"
+            echo "| Min SDK | ${EXPECTED_MIN_SDK} |"
+            echo "| Commit | ${GITHUB_SHA::7} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -47,3 +161,49 @@ jobs:
           name: Trimly-debug
           path: dist/Trimly-debug.apk
           if-no-files-found: error
+
+  smoke:
+    name: Smoke test API ${{ matrix.api }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [24, 34]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Trimly-debug
+          path: dist
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run app on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: bash .github/scripts/smoke.sh
+
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-api-${{ matrix.api }}
+          path: |
+            smoke.png
+            logcat.txt
+          if-no-files-found: ignore
