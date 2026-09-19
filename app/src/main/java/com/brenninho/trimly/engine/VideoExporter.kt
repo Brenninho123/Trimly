@@ -11,9 +11,11 @@ import android.os.SystemClock
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -41,6 +43,14 @@ private const val POLL_MS = 250L
 private const val SPACE_MARGIN_NUMERATOR = 16L
 private const val SPACE_MARGIN_DENOMINATOR = 10L
 
+class ExportSegment(
+    val uri: Uri,
+    val startMs: Long,
+    val endMs: Long
+) {
+    val durationMs: Long get() = endMs - startMs
+}
+
 private data class SourceInfo(
     val width: Int,
     val height: Int,
@@ -50,7 +60,8 @@ private data class SourceInfo(
 )
 
 private class Plan(
-    val effects: List<Effect>,
+    val itemEffects: List<Effect>,
+    val compositionEffects: List<Effect>,
     val bitrate: Int?,
     val fastTrim: Boolean,
     val forceH264: Boolean,
@@ -82,32 +93,37 @@ class VideoExporter(private val context: Context) {
         options: ExportOptions,
         output: File,
         onProgress: (Float) -> Unit
-    ): File = exportDetailed(source, startMs, endMs, options, output) { onProgress(it.fraction) }.file
+    ): File = exportDetailed(
+        segments = listOf(ExportSegment(source, startMs, endMs)),
+        options = options,
+        output = output
+    ) { onProgress(it.fraction) }.file
 
     suspend fun exportDetailed(
-        source: Uri,
-        startMs: Long,
-        endMs: Long,
+        segments: List<ExportSegment>,
         options: ExportOptions,
         output: File,
         onProgress: (ExportProgress) -> Unit
     ): ExportOutcome {
         val startedAt = SystemClock.elapsedRealtime()
 
-        if (endMs - startMs < MIN_RANGE_MS) {
+        if (segments.isEmpty() || segments.any { it.durationMs < MIN_RANGE_MS }) {
             throw ExportFailedException(ExportFailure.EMPTY_RANGE, "The selected range is too short")
         }
 
-        val info = withContext(Dispatchers.IO) { probe(source) }
-            ?: throw ExportFailedException(ExportFailure.SOURCE_UNREADABLE, "The source video could not be read")
+        val infos = withContext(Dispatchers.IO) { segments.map { probe(it.uri) } }
+        if (infos.any { it == null }) {
+            throw ExportFailedException(ExportFailure.SOURCE_UNREADABLE, "A source video could not be read")
+        }
+        val first = infos.first() ?: throw ExportFailedException(ExportFailure.SOURCE_UNREADABLE, null)
 
         var attempt = 1
-        var plan = buildPlan(options, info, startMs, endMs, safe = false)
+        var plan = buildPlan(options, first, segments, safe = false)
         checkSpace(output, plan.estimatedBytes)
 
         while (true) {
             try {
-                runAttempt(source, startMs, endMs, plan, output, startedAt, onProgress)
+                runAttempt(segments, plan, output, startedAt, onProgress)
                 return ExportOutcome(
                     file = output,
                     sizeBytes = output.length(),
@@ -126,15 +142,13 @@ class VideoExporter(private val context: Context) {
                     throw (e as? ExportFailedException) ?: ExportFailedException(failure, e.message, e)
                 }
                 attempt += 1
-                plan = buildPlan(options, info, startMs, endMs, safe = true)
+                plan = buildPlan(options, first, segments, safe = true)
             }
         }
     }
 
     private suspend fun runAttempt(
-        source: Uri,
-        startMs: Long,
-        endMs: Long,
+        segments: List<ExportSegment>,
         plan: Plan,
         output: File,
         startedAt: Long,
@@ -168,21 +182,6 @@ class VideoExporter(private val context: Context) {
                 }
 
                 val transformer = buildTransformer(plan, listener)
-
-                val clipping = MediaItem.ClippingConfiguration.Builder()
-                    .setStartPositionMs(startMs)
-                    .setEndPositionMs(endMs)
-                    .build()
-
-                val mediaItem = MediaItem.Builder()
-                    .setUri(source)
-                    .setClippingConfiguration(clipping)
-                    .build()
-
-                val edited = EditedMediaItem.Builder(mediaItem)
-                    .setRemoveAudio(plan.muted)
-                    .setEffects(Effects(emptyList(), plan.effects))
-                    .build()
 
                 val poll = object : Runnable {
                     override fun run() {
@@ -218,7 +217,16 @@ class VideoExporter(private val context: Context) {
                     }
                 }
 
-                transformer.start(edited, output.absolutePath)
+                if (segments.size == 1) {
+                    transformer.start(editedItem(segments.first(), plan), output.absolutePath)
+                } else {
+                    val sequence = EditedMediaItemSequence.Builder()
+                    segments.forEach { sequence.addItem(editedItem(it, plan)) }
+                    val composition = Composition.Builder(sequence.build())
+                        .setEffects(Effects(emptyList(), plan.compositionEffects))
+                        .build()
+                    transformer.start(composition, output.absolutePath)
+                }
                 handler.post(poll)
 
                 continuation.invokeOnCancellation {
@@ -230,6 +238,23 @@ class VideoExporter(private val context: Context) {
                 }
             }
         }
+    }
+
+    private fun editedItem(segment: ExportSegment, plan: Plan): EditedMediaItem {
+        val clipping = MediaItem.ClippingConfiguration.Builder()
+            .setStartPositionMs(segment.startMs)
+            .setEndPositionMs(segment.endMs)
+            .build()
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(segment.uri)
+            .setClippingConfiguration(clipping)
+            .build()
+
+        return EditedMediaItem.Builder(mediaItem)
+            .setRemoveAudio(plan.muted)
+            .setEffects(Effects(emptyList(), plan.itemEffects))
+            .build()
     }
 
     private fun buildTransformer(plan: Plan, listener: Transformer.Listener): Transformer {
@@ -261,42 +286,65 @@ class VideoExporter(private val context: Context) {
     private fun buildPlan(
         options: ExportOptions,
         info: SourceInfo,
-        startMs: Long,
-        endMs: Long,
+        segments: List<ExportSegment>,
         safe: Boolean
     ): Plan {
-        val effects = EffectsFactory.build(options)
+        val merged = segments.size > 1
+        val baseEffects = EffectsFactory.build(options)
+
         val turned = options.rotationDegrees % 180 != 0
         val displayWidth = if (turned) info.height else info.width
         val displayHeight = if (turned) info.width else info.height
-        val outputHeight = options.targetHeight ?: displayHeight
-        val outputWidth = (displayWidth.toLong() * outputHeight / displayHeight).toInt()
-        val frameRate = (info.frameRate ?: 30f).coerceIn(15f, 60f)
-        val seconds = (endMs - startMs) / 1000.0
+        val outputHeight = evenAtLeast(options.targetHeight ?: displayHeight)
+        val outputWidth = evenAtLeast((displayWidth.toLong() * outputHeight / displayHeight).toInt())
 
-        val heuristic = (outputWidth.toDouble() * outputHeight * frameRate * BITS_PER_PIXEL)
+        val overlay = TextOverlays.build(options.texts, outputHeight)
+
+        val itemEffects = ArrayList<Effect>(baseEffects)
+        val compositionEffects = ArrayList<Effect>()
+        if (merged) {
+            itemEffects.add(
+                Presentation.createForWidthAndHeight(outputWidth, outputHeight, Presentation.LAYOUT_SCALE_TO_FIT)
+            )
+            if (overlay != null) compositionEffects.add(overlay)
+        } else if (overlay != null) {
+            itemEffects.add(overlay)
+        }
+
+        val frameRate = (info.frameRate ?: 30f).coerceIn(15f, 60f)
+        val totalMs = segments.sumOf { it.durationMs }
+        val seconds = totalMs / 1000.0
+        val quality = options.quality
+
+        val heuristic = (outputWidth.toDouble() * outputHeight * frameRate * BITS_PER_PIXEL * quality.bitrateFactor)
             .toLong()
             .coerceIn(MIN_BITRATE, MAX_BITRATE)
         val sourceBitrate = info.bitrate?.takeIf { it > 0L }
         val bitrate = if (sourceBitrate != null) {
-            min(heuristic, (sourceBitrate * 1.2).toLong()).coerceAtLeast(MIN_BITRATE)
+            min(heuristic, (sourceBitrate * quality.sourceCap).toLong()).coerceAtLeast(MIN_BITRATE)
         } else {
             heuristic
         }
 
-        val trimmed = startMs > 0L || endMs < info.durationMs
-        val fastTrim = !safe && effects.isEmpty() && !options.muted && trimmed
+        val trimmed = segments.first().startMs > 0L || segments.first().endMs < info.durationMs
+        val fastTrim = !safe && !merged && itemEffects.isEmpty() && !options.muted && trimmed
         val estimateRate = if (fastTrim) (sourceBitrate ?: bitrate) else bitrate + AUDIO_BITRATE
         val estimatedBytes = (estimateRate * seconds / 8.0).toLong()
 
         return Plan(
-            effects = effects,
+            itemEffects = itemEffects,
+            compositionEffects = compositionEffects,
             bitrate = if (safe) null else bitrate.toInt(),
             fastTrim = fastTrim,
             forceH264 = safe,
             estimatedBytes = estimatedBytes,
             muted = options.muted
         )
+    }
+
+    private fun evenAtLeast(value: Int): Int {
+        val safe = value.coerceAtLeast(2)
+        return safe - safe % 2
     }
 
     private fun checkSpace(output: File, estimatedBytes: Long) {
