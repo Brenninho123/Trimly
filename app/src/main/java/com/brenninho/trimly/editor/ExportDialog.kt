@@ -37,7 +37,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.brenninho.trimly.engine.ExportFailure
+import com.brenninho.trimly.i18n.AppStrings
 import com.brenninho.trimly.i18n.LocalStrings
+import java.util.Locale
 import kotlin.math.roundToInt
 
 private val Success = Color(0xFF6BD68A)
@@ -58,7 +61,12 @@ fun ExportDialog(
         is ExportStatus.Running -> AlertDialog(
             onDismissRequest = {},
             title = { Text(s.exporting) },
-            text = { RunningContent(progress = status.progress, hint = s.exportingHint) },
+            text = {
+                RunningContent(
+                    progress = status.progress,
+                    hint = etaLabel(s, status.etaMs) ?: s.exportingHint
+                )
+            },
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = onCancel) { Text(s.cancel) }
@@ -70,11 +78,34 @@ fun ExportDialog(
             icon = { ResultIcon(success = true) },
             title = { Text(s.exportComplete) },
             text = {
-                Text(
-                    text = s.savedTo(status.location),
-                    textAlign = TextAlign.Center,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
-                )
+                ) {
+                    Text(
+                        text = s.savedTo(status.location),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (status.sizeBytes > 0L) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "${s.exportSize(formatSize(status.sizeBytes))} · ${s.exportTook(formatElapsed(status.elapsedMs))}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    if (status.fastTrim) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = s.exportFastTrim,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = onDismiss) { Text(s.done) }
@@ -96,7 +127,7 @@ fun ExportDialog(
             title = { Text(s.exportFailed) },
             text = {
                 Text(
-                    text = status.message ?: s.exportFailedHint,
+                    text = failureText(s, status),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -105,6 +136,37 @@ fun ExportDialog(
                 TextButton(onClick = onDismiss) { Text(s.close) }
             }
         )
+    }
+}
+
+private fun failureText(s: AppStrings, status: ExportStatus.Failed): String = when (status.failure) {
+    ExportFailure.NO_SPACE -> s.exportErrNoSpace
+    ExportFailure.UNSUPPORTED -> s.exportErrUnsupported
+    ExportFailure.SOURCE_UNREADABLE -> s.exportErrSource
+    ExportFailure.STALLED -> s.exportErrStalled
+    ExportFailure.EMPTY_RANGE -> s.exportErrRange
+    ExportFailure.ENCODER -> s.exportErrEncoder
+    ExportFailure.OTHER, null -> status.message ?: s.exportFailedHint
+}
+
+private fun etaLabel(s: AppStrings, etaMs: Long?): String? {
+    if (etaMs == null) return null
+    val seconds = (etaMs / 1000).coerceAtLeast(1L)
+    return if (seconds < 90L) s.exportEtaSeconds(seconds) else s.exportEtaMinutes((seconds + 30L) / 60L)
+}
+
+private fun formatSize(bytes: Long): String = when {
+    bytes >= 1_000_000_000L -> "%.2f GB".format(Locale.ROOT, bytes / 1_000_000_000.0)
+    bytes >= 1_000_000L -> "%.1f MB".format(Locale.ROOT, bytes / 1_000_000.0)
+    else -> "%d KB".format(Locale.ROOT, bytes / 1000L)
+}
+
+private fun formatElapsed(ms: Long): String {
+    val total = ms / 1000L
+    return if (total < 60L) {
+        "$total s"
+    } else {
+        "%d:%02d".format(Locale.ROOT, total / 60L, total % 60L)
     }
 }
 
