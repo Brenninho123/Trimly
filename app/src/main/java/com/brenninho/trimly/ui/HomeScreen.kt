@@ -197,9 +197,9 @@ private val tools = listOf(
     Tool("adjust", Icons.Filled.Tune, true),
     Tool("rotate", Icons.Filled.RotateRight, true),
     Tool("quality", Icons.Filled.HighQuality, true),
-    Tool("merge", Icons.Filled.Layers, false),
+    Tool("merge", Icons.Filled.Layers, true),
     Tool("speed", Icons.Filled.Speed, false),
-    Tool("text", Icons.Filled.TextFields, false)
+    Tool("text", Icons.Filled.TextFields, true)
 )
 
 private fun toolLabel(s: AppStrings, id: String): String = when (id) {
