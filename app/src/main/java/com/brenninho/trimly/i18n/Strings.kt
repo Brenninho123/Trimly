@@ -202,6 +202,17 @@ interface AppStrings {
     fun adjustmentName(kind: Adjustment): String
     val notAVideo: String
     val openingFirstOnly: String
+    val exportErrNoSpace: String
+    val exportErrUnsupported: String
+    val exportErrSource: String
+    val exportErrStalled: String
+    val exportErrRange: String
+    val exportErrEncoder: String
+    val exportFastTrim: String
+    fun exportEtaSeconds(seconds: Long): String
+    fun exportEtaMinutes(minutes: Long): String
+    fun exportSize(size: String): String
+    fun exportTook(time: String): String
 }
 
 object EnglishStrings : AppStrings {
@@ -419,6 +430,17 @@ object EnglishStrings : AppStrings {
     }
     override val notAVideo = "That file is not a video"
     override val openingFirstOnly = "Opening the first video only"
+    override val exportErrNoSpace = "Not enough free storage. Free some space and try again."
+    override val exportErrUnsupported = "This device can't process this video format."
+    override val exportErrSource = "The video could not be read. It may have been moved or deleted."
+    override val exportErrStalled = "The export stopped responding. Try again."
+    override val exportErrRange = "The selected range is too short."
+    override val exportErrEncoder = "The video encoder failed. Try a lower quality."
+    override val exportFastTrim = "Fast trim: no quality loss"
+    override fun exportEtaSeconds(seconds: Long) = "About $seconds s left"
+    override fun exportEtaMinutes(minutes: Long) = "About $minutes min left"
+    override fun exportSize(size: String) = "Size: $size"
+    override fun exportTook(time: String) = "Finished in $time"
 }
 
 object PortugueseStrings : AppStrings {
@@ -636,6 +658,17 @@ object PortugueseStrings : AppStrings {
     }
     override val notAVideo = "Esse arquivo não é um vídeo"
     override val openingFirstOnly = "Abrindo só o primeiro vídeo"
+    override val exportErrNoSpace = "Espaço livre insuficiente. Libere espaço e tente novamente."
+    override val exportErrUnsupported = "Este aparelho não consegue processar o formato deste vídeo."
+    override val exportErrSource = "Não foi possível ler o vídeo. Ele pode ter sido movido ou apagado."
+    override val exportErrStalled = "A exportação parou de responder. Tente novamente."
+    override val exportErrRange = "O trecho selecionado é curto demais."
+    override val exportErrEncoder = "O codificador de vídeo falhou. Tente uma qualidade menor."
+    override val exportFastTrim = "Corte rápido: sem perda de qualidade"
+    override fun exportEtaSeconds(seconds: Long) = "Faltam cerca de $seconds s"
+    override fun exportEtaMinutes(minutes: Long) = "Faltam cerca de $minutes min"
+    override fun exportSize(size: String) = "Tamanho: $size"
+    override fun exportTook(time: String) = "Concluído em $time"
 }
 
 object SpanishStrings : AppStrings {
@@ -853,6 +886,17 @@ object SpanishStrings : AppStrings {
     }
     override val notAVideo = "Ese archivo no es un video"
     override val openingFirstOnly = "Abriendo solo el primer video"
+    override val exportErrNoSpace = "No hay suficiente espacio libre. Libera espacio e inténtalo de nuevo."
+    override val exportErrUnsupported = "Este dispositivo no puede procesar el formato de este video."
+    override val exportErrSource = "No se pudo leer el video. Puede que se haya movido o eliminado."
+    override val exportErrStalled = "La exportación dejó de responder. Inténtalo de nuevo."
+    override val exportErrRange = "El tramo seleccionado es demasiado corto."
+    override val exportErrEncoder = "El codificador de video falló. Prueba una calidad menor."
+    override val exportFastTrim = "Recorte rápido: sin pérdida de calidad"
+    override fun exportEtaSeconds(seconds: Long) = "Faltan unos $seconds s"
+    override fun exportEtaMinutes(minutes: Long) = "Faltan unos $minutes min"
+    override fun exportSize(size: String) = "Tamaño: $size"
+    override fun exportTook(time: String) = "Terminado en $time"
 }
 
 fun stringsFor(language: AppLanguage): AppStrings {
