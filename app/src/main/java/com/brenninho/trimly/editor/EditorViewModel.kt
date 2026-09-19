@@ -6,6 +6,8 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.brenninho.trimly.engine.ExportFailedException
+import com.brenninho.trimly.engine.ExportFailure
 import com.brenninho.trimly.engine.MediaSaver
 import com.brenninho.trimly.engine.VideoExporter
 import com.brenninho.trimly.model.Adjustment
@@ -34,9 +36,15 @@ private const val COALESCE_WINDOW_MS = 1000L
 
 sealed interface ExportStatus {
     data object Idle : ExportStatus
-    data class Running(val progress: Float) : ExportStatus
-    data class Done(val uri: Uri?, val location: String) : ExportStatus
-    data class Failed(val message: String?) : ExportStatus
+    data class Running(val progress: Float, val etaMs: Long? = null) : ExportStatus
+    data class Done(
+        val uri: Uri?,
+        val location: String,
+        val sizeBytes: Long = 0L,
+        val elapsedMs: Long = 0L,
+        val fastTrim: Boolean = false
+    ) : ExportStatus
+    data class Failed(val message: String?, val failure: ExportFailure? = null) : ExportStatus
 }
 
 data class EditorState(
@@ -222,7 +230,7 @@ class EditorViewModel(
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val output = File(app.cacheDir, "Trimly_$stamp.mp4")
             try {
-                val file = exporter.export(
+                val outcome = exporter.exportDetailed(
                     source = current.clip.uri,
                     startMs = current.clip.startMs,
                     endMs = current.clip.endMs,
@@ -231,18 +239,32 @@ class EditorViewModel(
                     onProgress = { progress ->
                         _state.update { s ->
                             if (s.export is ExportStatus.Running) {
-                                s.copy(export = ExportStatus.Running(progress))
+                                s.copy(export = ExportStatus.Running(progress.fraction, progress.etaMs))
                             } else {
                                 s
                             }
                         }
                     }
                 )
-                val saved = MediaSaver.save(app, file)
-                _state.update { it.copy(export = ExportStatus.Done(saved.uri, saved.location)) }
+                val saved = MediaSaver.save(app, outcome.file)
+                _state.update {
+                    it.copy(
+                        export = ExportStatus.Done(
+                            uri = saved.uri,
+                            location = saved.location,
+                            sizeBytes = outcome.sizeBytes,
+                            elapsedMs = outcome.elapsedMs,
+                            fastTrim = outcome.fastTrim
+                        )
+                    )
+                }
             } catch (e: CancellationException) {
                 output.delete()
                 throw e
+            } catch (e: ExportFailedException) {
+                output.delete()
+                val detail = listOfNotNull(e.message, e.cause?.message).distinct().joinToString(": ")
+                _state.update { it.copy(export = ExportStatus.Failed(detail.ifBlank { null }, e.failure)) }
             } catch (e: Exception) {
                 output.delete()
                 val detail = listOfNotNull(e.message, e.cause?.message).distinct().joinToString(": ")
