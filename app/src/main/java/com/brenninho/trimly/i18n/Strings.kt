@@ -213,6 +213,43 @@ interface AppStrings {
     fun exportEtaMinutes(minutes: Long): String
     fun exportSize(size: String): String
     fun exportTook(time: String): String
+    val qualityResolution: String
+    val qualityLevelTitle: String
+    val qualityStandard: String
+    val qualityHigh: String
+    val qualityMax: String
+    val qualityStandardHint: String
+    val qualityHighHint: String
+    val qualityMaxHint: String
+    val mergeTitle: String
+    val mergeHint: String
+    val mergeAdd: String
+    val mergeRemove: String
+    val moveEarlier: String
+    val moveLater: String
+    val mergeAddFailed: String
+    val mergeLimit: String
+    val textAdd: String
+    val textDefault: String
+    val textEditLabel: String
+    val textColor: String
+    val textSize: String
+    val textBold: String
+    val textBackground: String
+    val textPosition: String
+    val posTop: String
+    val posCenter: String
+    val posBottom: String
+    val textDelete: String
+    val textWholeVideo: String
+    val textTiming: String
+    val textEmptyHint: String
+    val textDragHint: String
+    fun mergeClipLabel(index: Int): String
+    fun mergeTotal(time: String): String
+    fun mergeCount(count: Int): String
+    fun textFrom(start: String, end: String): String
+    fun chipText(text: String): String
 }
 
 object EnglishStrings : AppStrings {
@@ -441,6 +478,43 @@ object EnglishStrings : AppStrings {
     override fun exportEtaMinutes(minutes: Long) = "About $minutes min left"
     override fun exportSize(size: String) = "Size: $size"
     override fun exportTook(time: String) = "Finished in $time"
+    override val qualityResolution = "Resolution"
+    override val qualityLevelTitle = "Quality"
+    override val qualityStandard = "Standard"
+    override val qualityHigh = "High"
+    override val qualityMax = "Maximum"
+    override val qualityStandardHint = "Balanced size and quality"
+    override val qualityHighHint = "Sharper image, larger file"
+    override val qualityMaxHint = "Best quality, biggest file"
+    override val mergeTitle = "Merge clips"
+    override val mergeHint = "Clips play in this order. Tap one to trim it."
+    override val mergeAdd = "Add clip"
+    override val mergeRemove = "Remove clip"
+    override val moveEarlier = "Move earlier"
+    override val moveLater = "Move later"
+    override val mergeAddFailed = "Could not add this video"
+    override val mergeLimit = "You can merge up to 10 clips"
+    override val textAdd = "Add text"
+    override val textDefault = "Your text"
+    override val textEditLabel = "Text"
+    override val textColor = "Color"
+    override val textSize = "Size"
+    override val textBold = "Bold"
+    override val textBackground = "Background"
+    override val textPosition = "Position"
+    override val posTop = "Top"
+    override val posCenter = "Center"
+    override val posBottom = "Bottom"
+    override val textDelete = "Delete text"
+    override val textWholeVideo = "Show for the whole video"
+    override val textTiming = "Timing"
+    override val textEmptyHint = "Add text to write on your video"
+    override val textDragHint = "Drag the text on the video to move it"
+    override fun mergeClipLabel(index: Int) = "Clip $index"
+    override fun mergeTotal(time: String) = "Total length $time"
+    override fun mergeCount(count: Int) = "$count clips"
+    override fun textFrom(start: String, end: String) = "From $start to $end"
+    override fun chipText(text: String) = "Text: $text"
 }
 
 object PortugueseStrings : AppStrings {
@@ -669,6 +743,43 @@ object PortugueseStrings : AppStrings {
     override fun exportEtaMinutes(minutes: Long) = "Faltam cerca de $minutes min"
     override fun exportSize(size: String) = "Tamanho: $size"
     override fun exportTook(time: String) = "Concluído em $time"
+    override val qualityResolution = "Resolução"
+    override val qualityLevelTitle = "Qualidade"
+    override val qualityStandard = "Padrão"
+    override val qualityHigh = "Alta"
+    override val qualityMax = "Máxima"
+    override val qualityStandardHint = "Equilíbrio entre tamanho e qualidade"
+    override val qualityHighHint = "Imagem mais nítida, arquivo maior"
+    override val qualityMaxHint = "Melhor qualidade, arquivo bem maior"
+    override val mergeTitle = "Juntar clipes"
+    override val mergeHint = "Os clipes tocam nesta ordem. Toque em um para cortá-lo."
+    override val mergeAdd = "Adicionar clipe"
+    override val mergeRemove = "Remover clipe"
+    override val moveEarlier = "Mover para antes"
+    override val moveLater = "Mover para depois"
+    override val mergeAddFailed = "Não foi possível adicionar este vídeo"
+    override val mergeLimit = "Você pode juntar até 10 clipes"
+    override val textAdd = "Adicionar texto"
+    override val textDefault = "Seu texto"
+    override val textEditLabel = "Texto"
+    override val textColor = "Cor"
+    override val textSize = "Tamanho"
+    override val textBold = "Negrito"
+    override val textBackground = "Fundo"
+    override val textPosition = "Posição"
+    override val posTop = "Topo"
+    override val posCenter = "Centro"
+    override val posBottom = "Base"
+    override val textDelete = "Excluir texto"
+    override val textWholeVideo = "Mostrar durante todo o vídeo"
+    override val textTiming = "Tempo"
+    override val textEmptyHint = "Adicione texto para escrever no seu vídeo"
+    override val textDragHint = "Arraste o texto no vídeo para movê-lo"
+    override fun mergeClipLabel(index: Int) = "Clipe $index"
+    override fun mergeTotal(time: String) = "Duração total $time"
+    override fun mergeCount(count: Int) = "$count clipes"
+    override fun textFrom(start: String, end: String) = "De $start até $end"
+    override fun chipText(text: String) = "Texto: $text"
 }
 
 object SpanishStrings : AppStrings {
@@ -897,6 +1008,43 @@ object SpanishStrings : AppStrings {
     override fun exportEtaMinutes(minutes: Long) = "Faltan unos $minutes min"
     override fun exportSize(size: String) = "Tamaño: $size"
     override fun exportTook(time: String) = "Terminado en $time"
+    override val qualityResolution = "Resolución"
+    override val qualityLevelTitle = "Calidad"
+    override val qualityStandard = "Estándar"
+    override val qualityHigh = "Alta"
+    override val qualityMax = "Máxima"
+    override val qualityStandardHint = "Equilibrio entre tamaño y calidad"
+    override val qualityHighHint = "Imagen más nítida, archivo más grande"
+    override val qualityMaxHint = "La mejor calidad, el archivo más grande"
+    override val mergeTitle = "Unir clips"
+    override val mergeHint = "Los clips se reproducen en este orden. Toca uno para recortarlo."
+    override val mergeAdd = "Añadir clip"
+    override val mergeRemove = "Quitar clip"
+    override val moveEarlier = "Mover antes"
+    override val moveLater = "Mover después"
+    override val mergeAddFailed = "No se pudo añadir este video"
+    override val mergeLimit = "Puedes unir hasta 10 clips"
+    override val textAdd = "Añadir texto"
+    override val textDefault = "Tu texto"
+    override val textEditLabel = "Texto"
+    override val textColor = "Color"
+    override val textSize = "Tamaño"
+    override val textBold = "Negrita"
+    override val textBackground = "Fondo"
+    override val textPosition = "Posición"
+    override val posTop = "Arriba"
+    override val posCenter = "Centro"
+    override val posBottom = "Abajo"
+    override val textDelete = "Eliminar texto"
+    override val textWholeVideo = "Mostrar durante todo el video"
+    override val textTiming = "Tiempo"
+    override val textEmptyHint = "Añade texto para escribir en tu video"
+    override val textDragHint = "Arrastra el texto sobre el video para moverlo"
+    override fun mergeClipLabel(index: Int) = "Clip $index"
+    override fun mergeTotal(time: String) = "Duración total $time"
+    override fun mergeCount(count: Int) = "$count clips"
+    override fun textFrom(start: String, end: String) = "De $start a $end"
+    override fun chipText(text: String) = "Texto: $text"
 }
 
 fun stringsFor(language: AppLanguage): AppStrings {
