@@ -38,6 +38,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.brenninho.trimly.auth.DiscordAuth
+import com.brenninho.trimly.data.ImportActions
+import com.brenninho.trimly.data.VideoDownloader
 import com.brenninho.trimly.i18n.AppStrings
 import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.i18n.stringsFor
@@ -53,6 +55,7 @@ import kotlinx.coroutines.launch
 private sealed interface LaunchAction {
     data class Auth(val uri: Uri) : LaunchAction
     data class OpenVideo(val uri: Uri, val hasMore: Boolean) : LaunchAction
+    data class ImportLink(val url: String) : LaunchAction
     data object PickVideo : LaunchAction
     data object RecordVideo : LaunchAction
     data object ContinueLast : LaunchAction
@@ -99,6 +102,7 @@ class MainActivity : ComponentActivity() {
                     val recents by viewModel.recents.collectAsStateWithLifecycle()
                     val gridMode by viewModel.gridMode.collectAsStateWithLifecycle()
                     val settings by viewModel.settingsState.collectAsStateWithLifecycle()
+                    val importState by viewModel.importState.collectAsStateWithLifecycle()
 
                     val configuration = LocalConfiguration.current
                     val strings = remember(settings.language, configuration) { stringsFor(settings.language) }
@@ -111,6 +115,13 @@ class MainActivity : ComponentActivity() {
                             onLogout = viewModel::logout
                         )
                     }
+                    val importActions = remember {
+                        ImportActions(
+                            onImport = viewModel::importFromLink,
+                            onCancel = viewModel::cancelImport,
+                            onDismiss = viewModel::dismissImport
+                        )
+                    }
 
                     KeepScreenOn(enabled = state is MainState.Ready)
 
@@ -121,6 +132,8 @@ class MainActivity : ComponentActivity() {
                             gridMode = gridMode,
                             settings = settings,
                             actions = actions,
+                            importState = importState,
+                            importActions = importActions,
                             onPick = viewModel::open,
                             onOpenRecent = viewModel::openRecent,
                             onRemoveRecent = viewModel::removeRecent,
@@ -171,6 +184,15 @@ class MainActivity : ComponentActivity() {
             intent.action == ACTION_RECORD_VIDEO -> LaunchAction.RecordVideo
             intent.action == ACTION_CONTINUE_LAST -> LaunchAction.ContinueLast
 
+            intent.action == Intent.ACTION_SEND && intent.type?.startsWith("text/") == true -> {
+                val url = intent.getStringExtra(Intent.EXTRA_TEXT)?.let { VideoDownloader.extractUrl(it) }
+                if (url == null) LaunchAction.None else LaunchAction.ImportLink(url)
+            }
+
+            (intent.action == Intent.ACTION_VIEW || intent.action == Intent.ACTION_EDIT) &&
+                data != null && (data.scheme == "https" || data.scheme == "http") ->
+                LaunchAction.ImportLink(data.toString())
+
             else -> {
                 val uris = intent.videoUris()
                 val first = uris.firstOrNull()
@@ -187,6 +209,7 @@ class MainActivity : ComponentActivity() {
                 if (action.hasMore) toast(strings().openingFirstOnly)
                 openUri(action.uri)
             }
+            is LaunchAction.ImportLink -> viewModel.importFromLink(action.url)
             LaunchAction.PickVideo -> window.decorView.post { launchPicker() }
             LaunchAction.RecordVideo -> window.decorView.post { launchRecorder() }
             LaunchAction.ContinueLast -> viewModel.recents.value.firstOrNull()?.let(viewModel::openRecent)
