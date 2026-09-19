@@ -14,6 +14,9 @@ import android.view.Gravity
 import android.view.TextureView
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -33,6 +36,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -96,6 +100,7 @@ import com.brenninho.trimly.data.FrameExtractor
 import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.model.Clip
 import com.brenninho.trimly.model.ColorMath
+import com.brenninho.trimly.model.ExportQuality
 import com.brenninho.trimly.model.VideoFilter
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -122,6 +127,7 @@ fun EditorScreen(
         factory = EditorViewModelFactory(application, clip)
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val currentClip = state.clip
 
     val options = state.options
     val trimStart = state.clip.startMs
@@ -130,9 +136,9 @@ fun EditorScreen(
     val exportStatus = state.export
     val exporting = exportStatus is ExportStatus.Running
 
-    val exoPlayer = remember(clip.uri) {
+    val exoPlayer = remember(currentClip.uri) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(clip.uri))
+            setMediaItem(MediaItem.fromUri(currentClip.uri))
             prepare()
         }
     }
@@ -165,7 +171,7 @@ fun EditorScreen(
         label = "playerAlpha"
     )
 
-    val frames = remember(clip.uri) {
+    val frames = remember(currentClip.uri) {
         mutableStateListOf<ImageBitmap?>().apply { repeat(FRAME_COUNT) { add(null) } }
     }
 
@@ -218,10 +224,14 @@ fun EditorScreen(
         }
     }
 
-    LaunchedEffect(clip.uri) {
-        FrameExtractor.extract(context, clip.uri, clip.durationMs, FRAME_COUNT) { index, bitmap ->
+    LaunchedEffect(currentClip.uri) {
+        FrameExtractor.extract(context, currentClip.uri, currentClip.durationMs, FRAME_COUNT) { index, bitmap ->
             frames[index] = bitmap
         }
+    }
+
+    LaunchedEffect(exoPlayer, state.selected) {
+        exoPlayer.seekTo(state.clip.startMs)
     }
 
     LaunchedEffect(exoPlayer, options.muted) {
@@ -267,6 +277,18 @@ fun EditorScreen(
         scope.launch {
             snackbar.currentSnackbarData?.dismiss()
             snackbar.showSnackbar(message)
+        }
+    }
+
+    val addClipPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri -> uri?.let(viewModel::addSegment) }
+
+    LaunchedEffect(state.notice) {
+        val notice = state.notice
+        if (notice != null) {
+            announce(if (notice == EditorNotice.LIMIT) s.mergeLimit else s.mergeAddFailed)
+            viewModel.consumeNotice()
         }
     }
 
@@ -320,6 +342,13 @@ fun EditorScreen(
             }
             options.shortSide?.let { side ->
                 add(EditChip("quality", "${side}p") { viewModel.setQuality(null) })
+            }
+            if (options.quality != ExportQuality.STANDARD) {
+                val level = if (options.quality == ExportQuality.HIGH) s.qualityHigh else s.qualityMax
+                add(EditChip("level", level) { viewModel.setQualityLevel(ExportQuality.STANDARD) })
+            }
+            options.texts.forEach { item ->
+                add(EditChip("text_${item.id}", s.chipText(item.text.take(12))) { viewModel.removeText(item.id) })
             }
         }
     }
@@ -451,6 +480,16 @@ fun EditorScreen(
                         }
                 )
 
+                TextPreviewLayer(
+                    items = options.texts,
+                    timelineMs = state.offsetBeforeSelectedMs + state.clip.relativePosition(positionMs),
+                    selectedId = state.selectedTextId,
+                    editable = panel == PanelTab.TEXT && !exporting,
+                    onSelect = viewModel::selectText,
+                    onMove = { id, x, y -> viewModel.moveText(id, x, y) },
+                    modifier = Modifier.size(footprintWidth.dp, footprintHeight.dp)
+                )
+
                 OverlayVisibility(visible = !playing && !buffering) {
                     Box(
                         contentAlignment = Alignment.Center,
@@ -556,7 +595,7 @@ fun EditorScreen(
 
             EditorEntrance(visible = entered, delayMillis = 200) {
                 TrimTimeline(
-                    durationMs = clip.durationMs,
+                    durationMs = currentClip.durationMs,
                     startMs = trimStart,
                     endMs = trimEnd,
                     positionMs = positionMs,
@@ -593,29 +632,73 @@ fun EditorScreen(
                     label = "bottomArea"
                 ) { showPanel ->
                     if (showPanel) {
-                        StylePanel(
-                            tab = panel ?: lastPanel,
-                            options = options,
-                            previewFrame = frames.getOrNull(FRAME_COUNT / 2) ?: frames.firstOrNull { it != null },
-                            enabled = !exporting,
-                            onTabChange = {
-                                tick()
-                                panel = it
-                            },
-                            onFilter = {
-                                tick()
-                                viewModel.setFilter(it)
-                            },
-                            onIntensity = viewModel::setFilterIntensity,
-                            onAdjust = viewModel::setAdjustment,
-                            onResetAdjust = viewModel::resetAdjustments,
-                            onClose = { panel = null }
-                        )
+                        when (val active = panel ?: lastPanel) {
+                            PanelTab.TEXT -> TextPanel(
+                                texts = options.texts,
+                                selectedId = state.selectedTextId,
+                                totalMs = state.totalTrimmedMs,
+                                enabled = !exporting,
+                                onAdd = {
+                                    tick()
+                                    viewModel.addText(s.textDefault)
+                                },
+                                onSelect = viewModel::selectText,
+                                onChange = { id, transform -> viewModel.updateText(id, transform) },
+                                onDelete = viewModel::removeText,
+                                onClose = { panel = null },
+                                modifier = Modifier.imePadding()
+                            )
+
+                            PanelTab.MERGE -> MergePanel(
+                                segments = state.segments,
+                                selected = state.selected,
+                                totalMs = state.totalTrimmedMs,
+                                enabled = !exporting,
+                                onSelect = {
+                                    tick()
+                                    viewModel.selectSegment(it)
+                                },
+                                onRemove = {
+                                    tick()
+                                    viewModel.removeSegment(it)
+                                },
+                                onMove = { from, to ->
+                                    tick()
+                                    viewModel.moveSegment(from, to)
+                                },
+                                onAdd = {
+                                    addClipPicker.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                    )
+                                },
+                                onClose = { panel = null }
+                            )
+
+                            else -> StylePanel(
+                                tab = active,
+                                options = options,
+                                previewFrame = frames.getOrNull(FRAME_COUNT / 2) ?: frames.firstOrNull { it != null },
+                                enabled = !exporting,
+                                onTabChange = {
+                                    tick()
+                                    panel = it
+                                },
+                                onFilter = {
+                                    tick()
+                                    viewModel.setFilter(it)
+                                },
+                                onIntensity = viewModel::setFilterIntensity,
+                                onAdjust = viewModel::setAdjustment,
+                                onResetAdjust = viewModel::resetAdjustments,
+                                onClose = { panel = null }
+                            )
+                        }
                     } else {
                         EditorMenu(
                             category = menuCategory,
                             expanded = menuExpanded,
                             options = options,
+                            segmentCount = state.segments.size,
                             hasEdits = state.hasEdits,
                             enabled = !exporting,
                             onCategoryChange = {
@@ -639,6 +722,8 @@ fun EditorScreen(
                             onFilters = { panel = PanelTab.FILTERS },
                             onEffects = { panel = PanelTab.EFFECTS },
                             onAdjust = { panel = PanelTab.ADJUST },
+                            onMerge = { panel = PanelTab.MERGE },
+                            onText = { panel = PanelTab.TEXT },
                             onReset = {
                                 viewModel.reset()
                                 exoPlayer.seekTo(0L)
@@ -663,10 +748,9 @@ fun EditorScreen(
         QualityDialog(
             selected = options.shortSide,
             options = state.availableShortSides,
-            onSelect = { side ->
-                viewModel.setQuality(side)
-                showQuality = false
-            },
+            level = options.quality,
+            onSelect = { side -> viewModel.setQuality(side) },
+            onLevel = { level -> viewModel.setQualityLevel(level) },
             onDismiss = { showQuality = false }
         )
     }
