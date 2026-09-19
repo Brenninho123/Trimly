@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.view.DragAndDropPermissions
 import android.view.DragEvent
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -29,14 +30,34 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.brenninho.trimly.auth.DiscordAuth
+import com.brenninho.trimly.i18n.AppStrings
 import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.i18n.stringsFor
 import com.brenninho.trimly.settings.LoginError
 import com.brenninho.trimly.settings.SettingsActions
 import com.brenninho.trimly.ui.TrimlyApp
 import com.brenninho.trimly.ui.theme.TrimlyTheme
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+
+private sealed interface LaunchAction {
+    data class Auth(val uri: Uri) : LaunchAction
+    data class OpenVideo(val uri: Uri, val hasMore: Boolean) : LaunchAction
+    data object PickVideo : LaunchAction
+    data object RecordVideo : LaunchAction
+    data object ContinueLast : LaunchAction
+    data object None : LaunchAction
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -60,8 +81,13 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
         )
         window.setBackgroundDrawable(ColorDrawable(WINDOW_BACKGROUND))
+        allowCutoutContent()
         installDropTarget()
-        if (savedInstanceState == null) handleIntent(intent)
+        keepShortcutsFresh()
+
+        if (savedInstanceState == null && !launchedFromHistory(intent)) {
+            handleIntent(intent)
+        }
 
         setContent {
             TrimlyTheme {
@@ -121,6 +147,53 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    private fun strings(): AppStrings = stringsFor(viewModel.settingsState.value.language)
+
+    private fun launchedFromHistory(intent: Intent?): Boolean =
+        intent != null && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+
+    private fun allowCutoutContent() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val attributes = window.attributes
+            attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            window.attributes = attributes
+        }
+    }
+
+    private fun parse(intent: Intent): LaunchAction {
+        val data = intent.data
+        return when {
+            intent.action == Intent.ACTION_VIEW && data != null && DiscordAuth.isRedirect(data) ->
+                LaunchAction.Auth(data)
+
+            intent.action == ACTION_PICK_VIDEO -> LaunchAction.PickVideo
+            intent.action == ACTION_RECORD_VIDEO -> LaunchAction.RecordVideo
+            intent.action == ACTION_CONTINUE_LAST -> LaunchAction.ContinueLast
+
+            else -> {
+                val uris = intent.videoUris()
+                val first = uris.firstOrNull()
+                if (first == null) LaunchAction.None else LaunchAction.OpenVideo(first, uris.size > 1)
+            }
+        }
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        when (val action = parse(intent)) {
+            is LaunchAction.Auth -> viewModel.handleAuthRedirect(action.uri)
+            is LaunchAction.OpenVideo -> {
+                if (action.hasMore) toast(strings().openingFirstOnly)
+                openUri(action.uri)
+            }
+            LaunchAction.PickVideo -> window.decorView.post { launchPicker() }
+            LaunchAction.RecordVideo -> window.decorView.post { launchRecorder() }
+            LaunchAction.ContinueLast -> viewModel.recents.value.firstOrNull()?.let(viewModel::openRecent)
+            LaunchAction.None -> Unit
+        }
+    }
+
     private fun startDiscordLogin() {
         val url = viewModel.beginDiscordLogin()
         try {
@@ -130,29 +203,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun handleIntent(intent: Intent?) {
-        if (intent == null) return
-
-        val data = intent.data
-        if (intent.action == Intent.ACTION_VIEW && data != null && DiscordAuth.isRedirect(data)) {
-            viewModel.handleAuthRedirect(data)
-            return
-        }
-
-        when (intent.action) {
-            ACTION_PICK_VIDEO -> window.decorView.post { launchPicker() }
-            ACTION_RECORD_VIDEO -> window.decorView.post { launchRecorder() }
-            else -> {
-                if (intent.action == Intent.ACTION_SEND_MULTIPLE && intent.streamUris().size > 1) {
-                    toast("Opening the first video only")
-                }
-                intent.videoUri()?.let(::openUri)
-            }
-        }
-    }
-
     private fun openUri(uri: Uri) {
-        if (isVideo(uri)) viewModel.open(uri) else toast("That file is not a video")
+        if (isVideo(uri)) viewModel.open(uri) else toast(strings().notAVideo)
     }
 
     private fun isVideo(uri: Uri): Boolean {
@@ -172,7 +224,7 @@ class MainActivity : ComponentActivity() {
         try {
             recordVideo.launch(Intent(MediaStore.ACTION_VIDEO_CAPTURE))
         } catch (e: ActivityNotFoundException) {
-            toast("No camera app found")
+            toast(strings().noCameraApp)
         }
     }
 
@@ -182,9 +234,12 @@ class MainActivity : ComponentActivity() {
                 DragEvent.ACTION_DRAG_STARTED -> event.clipDescription?.hasMimeType("video/*") == true
 
                 DragEvent.ACTION_DROP -> {
-                    val uri = event.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+                    val clip = event.clipData
+                    val uri = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
                     if (uri != null) {
+                        dropPermissions?.release()
                         dropPermissions = requestDragAndDropPermissions(event)
+                        if ((clip?.itemCount ?: 0) > 1) toast(strings().openingFirstOnly)
                         openUri(uri)
                         true
                     } else {
@@ -197,18 +252,50 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun keepShortcutsFresh() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                combine(
+                    viewModel.recents.map { it.isNotEmpty() }.distinctUntilChanged(),
+                    viewModel.settingsState.map { it.language }.distinctUntilChanged()
+                ) { hasRecents, language -> hasRecents to stringsFor(language) }
+                    .collect { (hasRecents, strings) -> publishShortcuts(hasRecents, strings) }
+            }
+        }
+    }
+
+    private fun publishShortcuts(hasRecents: Boolean, strings: AppStrings) {
+        try {
+            if (!hasRecents) {
+                ShortcutManagerCompat.removeDynamicShortcuts(this, listOf(SHORTCUT_CONTINUE))
+                return
+            }
+            val target = Intent(this, MainActivity::class.java).setAction(ACTION_CONTINUE_LAST)
+            val shortcut = ShortcutInfoCompat.Builder(this, SHORTCUT_CONTINUE)
+                .setShortLabel(strings.continueEditing)
+                .setLongLabel(strings.continueEditing)
+                .setIcon(IconCompat.createWithResource(this, R.mipmap.ic_launcher))
+                .setIntent(target)
+                .build()
+            ShortcutManagerCompat.pushDynamicShortcut(this, shortcut)
+        } catch (e: Exception) {
+        }
+    }
+
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
-    private fun Intent.videoUri(): Uri? {
-        val direct = when (action) {
-            Intent.ACTION_VIEW, Intent.ACTION_EDIT -> data
-            Intent.ACTION_SEND -> streamUri()
-            Intent.ACTION_SEND_MULTIPLE -> streamUris().firstOrNull()
-            else -> null
+    private fun Intent.videoUris(): List<Uri> {
+        val direct: List<Uri> = when (action) {
+            Intent.ACTION_VIEW, Intent.ACTION_EDIT -> listOfNotNull(data)
+            Intent.ACTION_SEND -> listOfNotNull(streamUri())
+            Intent.ACTION_SEND_MULTIPLE -> streamUris()
+            else -> return emptyList()
         }
-        return direct ?: clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+        if (direct.isNotEmpty()) return direct
+        val clip = clipData ?: return emptyList()
+        return (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri }
     }
 
     private fun Intent.streamUri(): Uri? =
@@ -230,6 +317,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val ACTION_PICK_VIDEO = "com.brenninho.trimly.action.PICK_VIDEO"
         const val ACTION_RECORD_VIDEO = "com.brenninho.trimly.action.RECORD_VIDEO"
+        const val ACTION_CONTINUE_LAST = "com.brenninho.trimly.action.CONTINUE_LAST"
+        private const val SHORTCUT_CONTINUE = "continue_last"
         private val WINDOW_BACKGROUND = 0xFF101318.toInt()
     }
 }
