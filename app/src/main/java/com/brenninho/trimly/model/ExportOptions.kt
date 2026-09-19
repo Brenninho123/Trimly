@@ -1,5 +1,11 @@
 package com.brenninho.trimly.model
 
+enum class ExportQuality(val bitrateFactor: Double, val sourceCap: Double) {
+    STANDARD(1.0, 1.2),
+    HIGH(1.6, 1.6),
+    MAX(2.4, 2.4)
+}
+
 data class ExportOptions(
     val rotationDegrees: Int = 0,
     val flipHorizontal: Boolean = false,
@@ -11,7 +17,9 @@ data class ExportOptions(
     val brightness: Int = 0,
     val contrast: Int = 0,
     val saturation: Int = 0,
-    val warmth: Int = 0
+    val warmth: Int = 0,
+    val quality: ExportQuality = ExportQuality.STANDARD,
+    val texts: List<TextItem> = emptyList()
 ) {
     val hasVideoTransform: Boolean
         get() = rotationDegrees % 360 != 0 || flipHorizontal
