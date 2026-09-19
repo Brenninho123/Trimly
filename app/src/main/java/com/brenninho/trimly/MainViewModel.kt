@@ -8,15 +8,21 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.brenninho.trimly.auth.DiscordAuth
+import com.brenninho.trimly.data.DownloadException
+import com.brenninho.trimly.data.DownloadFailure
+import com.brenninho.trimly.data.ImportState
 import com.brenninho.trimly.data.RecentStore
 import com.brenninho.trimly.data.RecentVideo
+import com.brenninho.trimly.data.VideoDownloader
 import com.brenninho.trimly.i18n.AppLanguage
 import com.brenninho.trimly.model.Clip
 import com.brenninho.trimly.settings.AppSettings
 import com.brenninho.trimly.settings.LoginError
 import com.brenninho.trimly.settings.LoginStatus
 import com.brenninho.trimly.settings.SettingsState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,6 +65,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     )
     val settingsState: StateFlow<SettingsState> = _settingsState.asStateFlow()
+
+    private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
+    val importState: StateFlow<ImportState> = _importState.asStateFlow()
+    private var importJob: Job? = null
 
     fun open(uri: Uri) {
         _state.value = MainState.Loading
@@ -162,6 +172,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         settings.profile = null
         settings.pendingState = null
         _settingsState.update { it.copy(profile = null, login = LoginStatus.Idle) }
+    }
+
+    fun importFromLink(rawUrl: String) {
+        if (_importState.value is ImportState.Downloading) return
+        _importState.value = ImportState.Downloading(null, 0L, null)
+        importJob = viewModelScope.launch {
+            try {
+                val video = VideoDownloader.download(getApplication(), rawUrl) { progress ->
+                    _importState.update { current ->
+                        if (current is ImportState.Downloading) {
+                            ImportState.Downloading(progress.name, progress.bytes, progress.total)
+                        } else {
+                            current
+                        }
+                    }
+                }
+                _importState.value = ImportState.Idle
+                open(Uri.fromFile(video.file))
+            } catch (e: CancellationException) {
+                _importState.value = ImportState.Idle
+                throw e
+            } catch (e: DownloadException) {
+                _importState.value = ImportState.Failed(e.reason, e.message)
+            } catch (e: Exception) {
+                _importState.value = ImportState.Failed(DownloadFailure.NETWORK, e.message)
+            }
+        }
+    }
+
+    fun cancelImport() {
+        importJob?.cancel()
+        importJob = null
+        _importState.value = ImportState.Idle
+    }
+
+    fun dismissImport() {
+        if (_importState.value is ImportState.Failed) _importState.value = ImportState.Idle
     }
 
     private fun addRecent(uri: Uri, info: VideoInfo) {
