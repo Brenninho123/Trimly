@@ -200,6 +200,8 @@ interface AppStrings {
     fun savedTo(location: String): String
     fun filterName(filter: VideoFilter): String
     fun adjustmentName(kind: Adjustment): String
+    val notAVideo: String
+    val openingFirstOnly: String
 }
 
 object EnglishStrings : AppStrings {
@@ -415,6 +417,8 @@ object EnglishStrings : AppStrings {
         Adjustment.SATURATION -> "Saturation"
         Adjustment.WARMTH -> "Warmth"
     }
+    override val notAVideo = "That file is not a video"
+    override val openingFirstOnly = "Opening the first video only"
 }
 
 object PortugueseStrings : AppStrings {
@@ -630,6 +634,8 @@ object PortugueseStrings : AppStrings {
         Adjustment.SATURATION -> "Saturação"
         Adjustment.WARMTH -> "Temperatura"
     }
+    override val notAVideo = "Esse arquivo não é um vídeo"
+    override val openingFirstOnly = "Abrindo só o primeiro vídeo"
 }
 
 object SpanishStrings : AppStrings {
@@ -845,6 +851,8 @@ object SpanishStrings : AppStrings {
         Adjustment.SATURATION -> "Saturación"
         Adjustment.WARMTH -> "Calidez"
     }
+    override val notAVideo = "Ese archivo no es un video"
+    override val openingFirstOnly = "Abriendo solo el primer video"
 }
 
 fun stringsFor(language: AppLanguage): AppStrings {
