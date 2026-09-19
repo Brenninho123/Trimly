@@ -86,6 +86,7 @@ import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Movie
@@ -168,6 +169,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.brenninho.trimly.MainState
+import com.brenninho.trimly.data.ImportActions
+import com.brenninho.trimly.data.ImportState
 import com.brenninho.trimly.data.RecentVideo
 import com.brenninho.trimly.data.ThumbnailLoader
 import com.brenninho.trimly.i18n.AppStrings
@@ -326,6 +329,8 @@ fun HomeScreen(
     gridMode: Boolean,
     settings: SettingsState,
     actions: SettingsActions,
+    importState: ImportState,
+    importActions: ImportActions,
     onPick: (Uri) -> Unit,
     onOpenRecent: (RecentVideo) -> Unit,
     onRemoveRecent: (RecentVideo) -> Unit,
@@ -345,6 +350,7 @@ fun HomeScreen(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showLink by rememberSaveable { mutableStateOf(false) }
     var showClear by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -717,7 +723,8 @@ fun HomeScreen(
                                 profile = profile,
                                 onSelect = pickFromLibrary,
                                 onBrowse = browseFiles,
-                                onRecord = record
+                                onRecord = record,
+                                onLink = { showLink = true }
                             )
                         }
                     }
@@ -852,6 +859,24 @@ fun HomeScreen(
         )
     }
 
+    if (showLink || importState !is ImportState.Idle) {
+        ImportLinkDialog(
+            state = importState,
+            onImport = { url ->
+                showLink = false
+                importActions.onImport(url)
+            },
+            onCancel = {
+                showLink = false
+                importActions.onCancel()
+            },
+            onDismiss = {
+                showLink = false
+                importActions.onDismiss()
+            }
+        )
+    }
+
     if (showClear) {
         AlertDialog(
             onDismissRequest = { showClear = false },
@@ -966,7 +991,8 @@ private fun HeroCard(
     profile: DiscordProfile?,
     onSelect: () -> Unit,
     onBrowse: () -> Unit,
-    onRecord: () -> Unit
+    onRecord: () -> Unit,
+    onLink: () -> Unit
 ) {
     val s = LocalStrings.current
     val pulse = rememberInfiniteTransition(label = "heroPulse")
@@ -1080,18 +1106,35 @@ private fun HeroCard(
                         }
                         Spacer(Modifier.height(12.dp))
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            OutlinedButton(onClick = onBrowse, modifier = Modifier.weight(1f)) {
+                            OutlinedButton(
+                                onClick = onBrowse,
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(s.files)
+                                Spacer(Modifier.width(4.dp))
+                                Text(s.files, maxLines = 1)
                             }
-                            OutlinedButton(onClick = onRecord, modifier = Modifier.weight(1f)) {
+                            OutlinedButton(
+                                onClick = onRecord,
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Icon(Icons.Filled.Videocam, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(s.record)
+                                Spacer(Modifier.width(4.dp))
+                                Text(s.record, maxLines = 1)
+                            }
+                            OutlinedButton(
+                                onClick = onLink,
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(s.linkButton, maxLines = 1)
                             }
                         }
                     }
