@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Warning
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.brenninho.trimly.engine.ExportFailure
 import com.brenninho.trimly.i18n.AppStrings
 import com.brenninho.trimly.i18n.LocalStrings
+import com.brenninho.trimly.model.ExportQuality
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -243,7 +246,9 @@ private fun ResultIcon(success: Boolean) {
 fun QualityDialog(
     selected: Int?,
     options: List<Int>,
+    level: ExportQuality,
     onSelect: (Int?) -> Unit,
+    onLevel: (ExportQuality) -> Unit,
     onDismiss: () -> Unit
 ) {
     val s = LocalStrings.current
@@ -252,19 +257,47 @@ fun QualityDialog(
         onDismissRequest = onDismiss,
         title = { Text(s.qualityTitle) },
         text = {
-            Column {
-                QualityRow(label = s.qualityOriginal, selected = selected == null) { onSelect(null) }
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = s.qualityResolution,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                QualityRow(label = s.qualityOriginal, hint = null, selected = selected == null) { onSelect(null) }
                 options.forEach { side ->
-                    QualityRow(label = "${side}p", selected = selected == side) { onSelect(side) }
+                    QualityRow(label = "${side}p", hint = null, selected = selected == side) { onSelect(side) }
                 }
                 if (options.isEmpty()) {
                     Text(
                         text = s.qualityUnavailable,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
+
+                Spacer(Modifier.height(16.dp))
+
+                Text(
+                    text = s.qualityLevelTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                QualityRow(
+                    label = s.qualityStandard,
+                    hint = s.qualityStandardHint,
+                    selected = level == ExportQuality.STANDARD
+                ) { onLevel(ExportQuality.STANDARD) }
+                QualityRow(
+                    label = s.qualityHigh,
+                    hint = s.qualityHighHint,
+                    selected = level == ExportQuality.HIGH
+                ) { onLevel(ExportQuality.HIGH) }
+                QualityRow(
+                    label = s.qualityMax,
+                    hint = s.qualityMaxHint,
+                    selected = level == ExportQuality.MAX
+                ) { onLevel(ExportQuality.MAX) }
             }
         },
         confirmButton = {
@@ -276,6 +309,7 @@ fun QualityDialog(
 @Composable
 private fun QualityRow(
     label: String,
+    hint: String?,
     selected: Boolean,
     onClick: () -> Unit
 ) {
@@ -287,6 +321,15 @@ private fun QualityRow(
             .padding(vertical = 4.dp)
     ) {
         RadioButton(selected = selected, onClick = onClick)
-        Text(text = label, modifier = Modifier.padding(start = 8.dp))
+        Column(modifier = Modifier.padding(start = 8.dp)) {
+            Text(text = label)
+            if (hint != null) {
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
