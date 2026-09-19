@@ -75,12 +75,19 @@ import kotlinx.coroutines.delay
 enum class PanelTab {
     FILTERS,
     EFFECTS,
-    ADJUST;
+    ADJUST,
+    TEXT,
+    MERGE;
+
+    val isStyle: Boolean
+        get() = this == FILTERS || this == EFFECTS || this == ADJUST
 
     fun label(s: AppStrings): String = when (this) {
         FILTERS -> s.toolFilters
         EFFECTS -> s.toolEffects
         ADJUST -> s.toolAdjust
+        TEXT -> s.toolText
+        MERGE -> s.toolMerge
     }
 }
 
@@ -107,7 +114,7 @@ fun StylePanel(
                 containerColor = Color.Transparent,
                 modifier = Modifier.weight(1f)
             ) {
-                PanelTab.entries.forEach { item ->
+                PanelTab.entries.filter { it.isStyle }.forEach { item ->
                     Tab(
                         selected = item == tab,
                         onClick = { onTabChange(item) },
@@ -152,6 +159,8 @@ fun StylePanel(
                     onAdjust = onAdjust,
                     onReset = onResetAdjust
                 )
+
+                PanelTab.TEXT, PanelTab.MERGE -> Unit
             }
         }
     }
