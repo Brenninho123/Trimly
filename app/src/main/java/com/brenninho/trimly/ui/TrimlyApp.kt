@@ -13,6 +13,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import com.brenninho.trimly.MainState
 import com.brenninho.trimly.data.RecentVideo
+import com.brenninho.trimly.data.ImportActions
+import com.brenninho.trimly.data.ImportState
 import com.brenninho.trimly.editor.EditorScreen
 import com.brenninho.trimly.settings.SettingsActions
 import com.brenninho.trimly.settings.SettingsState
@@ -24,6 +26,8 @@ fun TrimlyApp(
     gridMode: Boolean,
     settings: SettingsState,
     actions: SettingsActions,
+    importState: ImportState,
+    importActions: ImportActions,
     onPick: (Uri) -> Unit,
     onOpenRecent: (RecentVideo) -> Unit,
     onRemoveRecent: (RecentVideo) -> Unit,
@@ -55,6 +59,8 @@ fun TrimlyApp(
                 gridMode = gridMode,
                 settings = settings,
                 actions = actions,
+                importState = importState,
+                importActions = importActions,
                 onPick = onPick,
                 onOpenRecent = onOpenRecent,
                 onRemoveRecent = onRemoveRecent,
