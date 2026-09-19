@@ -254,6 +254,23 @@ interface AppStrings {
     val menuShowAll: String
     val menuShowLess: String
     fun menuEdits(count: Int): String
+    val linkButton: String
+    val linkTitle: String
+    val linkHint: String
+    val linkNote: String
+    val linkPlaceholder: String
+    val linkPaste: String
+    val linkImport: String
+    val linkDownloading: String
+    val linkErrInvalid: String
+    val linkErrInsecure: String
+    val linkErrNotVideo: String
+    val linkErrPlaylist: String
+    val linkErrTooLarge: String
+    val linkErrNoSpace: String
+    val linkErrNetwork: String
+    fun linkProgress(done: String, total: String?): String
+    fun linkErrHttp(code: String): String
 }
 
 object EnglishStrings : AppStrings {
@@ -523,6 +540,23 @@ object EnglishStrings : AppStrings {
     override val menuShowAll = "Show all tools"
     override val menuShowLess = "Show fewer tools"
     override fun menuEdits(count: Int) = (if (count == 1) "1 edit" else "$count edits")
+    override val linkButton = "Link"
+    override val linkTitle = "Import from link"
+    override val linkHint = "Paste a direct https link to a video file, such as one ending in .mp4."
+    override val linkNote = "Links to pages of video sites are not files and cannot be imported. Only import videos you have the right to use."
+    override val linkPlaceholder = "https://example.com/video.mp4"
+    override val linkPaste = "Paste"
+    override val linkImport = "Import"
+    override val linkDownloading = "Downloading…"
+    override val linkErrInvalid = "This is not a valid link"
+    override val linkErrInsecure = "Only secure https links are supported"
+    override val linkErrNotVideo = "This link is a web page or another kind of file, not a video. Use a direct link to the video file."
+    override val linkErrPlaylist = "Streaming playlists (m3u8) are not supported"
+    override val linkErrTooLarge = "The file is larger than 2 GB"
+    override val linkErrNoSpace = "Not enough free storage for this download"
+    override val linkErrNetwork = "Could not download the video. Check your connection and the link"
+    override fun linkProgress(done: String, total: String?) = (if (total != null) "$done of $total" else done)
+    override fun linkErrHttp(code: String) = "The server answered with error $code"
 }
 
 object PortugueseStrings : AppStrings {
@@ -792,6 +826,23 @@ object PortugueseStrings : AppStrings {
     override val menuShowAll = "Mostrar todas as ferramentas"
     override val menuShowLess = "Mostrar menos ferramentas"
     override fun menuEdits(count: Int) = (if (count == 1) "1 edição" else "$count edições")
+    override val linkButton = "Link"
+    override val linkTitle = "Importar de um link"
+    override val linkHint = "Cole um link https direto para um arquivo de vídeo, como um que termina em .mp4."
+    override val linkNote = "Links de páginas de sites de vídeo não são arquivos e não podem ser importados. Importe apenas vídeos que você tem direito de usar."
+    override val linkPlaceholder = "https://exemplo.com/video.mp4"
+    override val linkPaste = "Colar"
+    override val linkImport = "Importar"
+    override val linkDownloading = "Baixando…"
+    override val linkErrInvalid = "Este não é um link válido"
+    override val linkErrInsecure = "Apenas links seguros https são suportados"
+    override val linkErrNotVideo = "Este link é uma página da web ou outro tipo de arquivo, não um vídeo. Use um link direto para o arquivo de vídeo."
+    override val linkErrPlaylist = "Playlists de streaming (m3u8) não são suportadas"
+    override val linkErrTooLarge = "O arquivo tem mais de 2 GB"
+    override val linkErrNoSpace = "Espaço livre insuficiente para este download"
+    override val linkErrNetwork = "Não foi possível baixar o vídeo. Verifique sua conexão e o link"
+    override fun linkProgress(done: String, total: String?) = (if (total != null) "$done de $total" else done)
+    override fun linkErrHttp(code: String) = "O servidor respondeu com o erro $code"
 }
 
 object SpanishStrings : AppStrings {
@@ -1061,6 +1112,23 @@ object SpanishStrings : AppStrings {
     override val menuShowAll = "Mostrar todas las herramientas"
     override val menuShowLess = "Mostrar menos herramientas"
     override fun menuEdits(count: Int) = (if (count == 1) "1 edición" else "$count ediciones")
+    override val linkButton = "Enlace"
+    override val linkTitle = "Importar desde un enlace"
+    override val linkHint = "Pega un enlace https directo a un archivo de video, como uno que termine en .mp4."
+    override val linkNote = "Los enlaces a páginas de sitios de video no son archivos y no se pueden importar. Importa solo videos que tengas derecho a usar."
+    override val linkPlaceholder = "https://ejemplo.com/video.mp4"
+    override val linkPaste = "Pegar"
+    override val linkImport = "Importar"
+    override val linkDownloading = "Descargando…"
+    override val linkErrInvalid = "Este no es un enlace válido"
+    override val linkErrInsecure = "Solo se admiten enlaces seguros https"
+    override val linkErrNotVideo = "Este enlace es una página web u otro tipo de archivo, no un video. Usa un enlace directo al archivo de video."
+    override val linkErrPlaylist = "Las listas de streaming (m3u8) no son compatibles"
+    override val linkErrTooLarge = "El archivo supera los 2 GB"
+    override val linkErrNoSpace = "No hay suficiente espacio libre para esta descarga"
+    override val linkErrNetwork = "No se pudo descargar el video. Revisa tu conexión y el enlace"
+    override fun linkProgress(done: String, total: String?) = (if (total != null) "$done de $total" else done)
+    override fun linkErrHttp(code: String) = "El servidor respondió con el error $code"
 }
 
 fun stringsFor(language: AppLanguage): AppStrings {
