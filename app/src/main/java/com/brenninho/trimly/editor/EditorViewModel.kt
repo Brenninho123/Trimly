@@ -1,6 +1,7 @@
 package com.brenninho.trimly.editor
 
 import android.app.Application
+import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -8,11 +9,14 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.brenninho.trimly.engine.ExportFailedException
 import com.brenninho.trimly.engine.ExportFailure
+import com.brenninho.trimly.engine.ExportSegment
 import com.brenninho.trimly.engine.MediaSaver
 import com.brenninho.trimly.engine.VideoExporter
 import com.brenninho.trimly.model.Adjustment
 import com.brenninho.trimly.model.Clip
 import com.brenninho.trimly.model.ExportOptions
+import com.brenninho.trimly.model.ExportQuality
+import com.brenninho.trimly.model.TextItem
 import com.brenninho.trimly.model.VideoFilter
 import java.io.File
 import java.text.SimpleDateFormat
@@ -30,6 +34,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 const val MIN_TRIM_MS = 500L
+const val MAX_SEGMENTS = 10
 
 private const val MAX_HISTORY = 50
 private const val COALESCE_WINDOW_MS = 1000L
@@ -47,20 +52,44 @@ sealed interface ExportStatus {
     data class Failed(val message: String?, val failure: ExportFailure? = null) : ExportStatus
 }
 
+enum class EditorNotice {
+    ADD_FAILED,
+    LIMIT
+}
+
+data class Segment(
+    val id: Long,
+    val clip: Clip
+)
+
 data class EditorState(
-    val clip: Clip,
+    val segments: List<Segment>,
+    val selected: Int = 0,
     val options: ExportOptions = ExportOptions(),
+    val selectedTextId: Long? = null,
     val sourceWidth: Int = 0,
     val sourceHeight: Int = 0,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
+    val notice: EditorNotice? = null,
     val export: ExportStatus = ExportStatus.Idle
 ) {
+    val clip: Clip
+        get() = segments[selected.coerceIn(0, segments.lastIndex)].clip
+
+    val totalTrimmedMs: Long
+        get() = segments.sumOf { it.clip.trimmedDurationMs }
+
+    val offsetBeforeSelectedMs: Long
+        get() = segments.take(selected).sumOf { it.clip.trimmedDurationMs }
+
     val hasEdits: Boolean
-        get() = clip.isTrimmed || options != ExportOptions()
+        get() = segments.size > 1 || segments.any { it.clip.isTrimmed } || options != ExportOptions()
 
     val canExport: Boolean
-        get() = clip.trimmedDurationMs >= MIN_TRIM_MS && export !is ExportStatus.Running
+        get() = totalTrimmedMs >= MIN_TRIM_MS &&
+            segments.all { it.clip.trimmedDurationMs > 0L } &&
+            export !is ExportStatus.Running
 
     val availableShortSides: List<Int>
         get() {
@@ -70,7 +99,8 @@ data class EditorState(
 }
 
 private data class Snapshot(
-    val clip: Clip,
+    val segments: List<Segment>,
+    val selected: Int,
     val options: ExportOptions
 )
 
@@ -79,9 +109,10 @@ class EditorViewModel(
     clip: Clip
 ) : ViewModel() {
 
-    private val original = clip
+    private val original = listOf(Segment(1L, clip))
+    private var nextId = 2L
     private val exporter = VideoExporter(app)
-    private val _state = MutableStateFlow(EditorState(clip))
+    private val _state = MutableStateFlow(EditorState(segments = original))
     val state: StateFlow<EditorState> = _state.asStateFlow()
     private var job: Job? = null
 
@@ -92,10 +123,7 @@ class EditorViewModel(
     private var coalesceAt = 0L
 
     init {
-        viewModelScope.launch {
-            val size = withContext(Dispatchers.IO) { readSize(clip.uri) }
-            if (size != null) setSourceSize(size.first, size.second)
-        }
+        loadSourceSize(clip.uri)
     }
 
     fun setSourceSize(width: Int, height: Int) {
@@ -109,9 +137,12 @@ class EditorViewModel(
         }
     }
 
+    fun consumeNotice() {
+        _state.update { it.copy(notice = null) }
+    }
+
     fun beginRangeEdit() {
-        val current = _state.value
-        pendingRange = Snapshot(current.clip, current.options)
+        pendingRange = snapshot(_state.value)
     }
 
     fun setRange(startMs: Long, endMs: Long) {
@@ -122,19 +153,73 @@ class EditorViewModel(
             record(it)
             pendingRange = null
         }
-        _state.update { it.copy(clip = next) }
+        _state.update { state -> replaceSelected(state) { it.withRange(startMs, endMs) } }
     }
 
     fun setStartAt(positionMs: Long) {
-        commitClip(_state.value.clip.withStart(positionMs, MIN_TRIM_MS))
+        commitClip { it.withStart(positionMs, MIN_TRIM_MS) }
     }
 
     fun setEndAt(positionMs: Long) {
-        commitClip(_state.value.clip.withEnd(positionMs, MIN_TRIM_MS))
+        commitClip { it.withEnd(positionMs, MIN_TRIM_MS) }
     }
 
     fun resetTrim() {
-        commitClip(_state.value.clip.reset())
+        commitClip { it.reset() }
+    }
+
+    fun selectSegment(index: Int) {
+        _state.update { if (index in it.segments.indices) it.copy(selected = index) else it }
+    }
+
+    fun addSegment(uri: Uri) {
+        if (_state.value.segments.size >= MAX_SEGMENTS) {
+            _state.update { it.copy(notice = EditorNotice.LIMIT) }
+            return
+        }
+        viewModelScope.launch {
+            val duration = withContext(Dispatchers.IO) {
+                keepAccess(uri)
+                readDuration(uri)
+            }
+            if (duration == null) {
+                _state.update { it.copy(notice = EditorNotice.ADD_FAILED) }
+                return@launch
+            }
+            record(snapshot(_state.value))
+            coalesceKey = null
+            val segment = Segment(nextId++, Clip(uri, duration))
+            _state.update { it.copy(segments = it.segments + segment, selected = it.segments.size) }
+        }
+    }
+
+    fun removeSegment(index: Int) {
+        val current = _state.value
+        if (current.segments.size <= 1 || index !in current.segments.indices) return
+        record(snapshot(current))
+        coalesceKey = null
+        val remaining = current.segments.filterIndexed { position, _ -> position != index }
+        val selected = when {
+            current.selected > index -> current.selected - 1
+            current.selected == index -> index
+            else -> current.selected
+        }.coerceIn(0, remaining.lastIndex)
+        _state.update { it.copy(segments = remaining, selected = selected) }
+        if (index == 0) refreshSourceSize()
+    }
+
+    fun moveSegment(from: Int, to: Int) {
+        val current = _state.value
+        if (from !in current.segments.indices || to !in current.segments.indices || from == to) return
+        record(snapshot(current))
+        coalesceKey = null
+        val selectedId = current.segments[current.selected.coerceIn(0, current.segments.lastIndex)].id
+        val list = current.segments.toMutableList()
+        val moved = list.removeAt(from)
+        list.add(to, moved)
+        val selected = list.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
+        _state.update { it.copy(segments = list, selected = selected) }
+        if (from == 0 || to == 0) refreshSourceSize()
     }
 
     fun updateOptions(key: String? = null, transform: (ExportOptions) -> ExportOptions) {
@@ -144,7 +229,7 @@ class EditorViewModel(
 
         val now = System.currentTimeMillis()
         val merge = key != null && key == coalesceKey && now - coalesceAt < COALESCE_WINDOW_MS
-        if (!merge) record(Snapshot(current.clip, current.options))
+        if (!merge) record(snapshot(current))
         coalesceKey = key
         coalesceAt = now
 
@@ -167,6 +252,10 @@ class EditorViewModel(
         updateOptions { it.copy(shortSide = shortSide) }
     }
 
+    fun setQualityLevel(level: ExportQuality) {
+        updateOptions { it.copy(quality = level) }
+    }
+
     fun setFilter(filter: VideoFilter) {
         updateOptions { if (it.filter == filter) it else it.copy(filter = filter, filterIntensity = 1f) }
     }
@@ -183,42 +272,56 @@ class EditorViewModel(
         updateOptions { it.clearAdjustments() }
     }
 
+    fun addText(defaultText: String) {
+        val id = nextId++
+        val item = TextItem(id = id, text = defaultText)
+        updateOptions { it.copy(texts = it.texts + item) }
+        _state.update { it.copy(selectedTextId = id) }
+    }
+
+    fun selectText(id: Long?) {
+        _state.update { it.copy(selectedTextId = id) }
+    }
+
+    fun updateText(id: Long, transform: (TextItem) -> TextItem) {
+        updateOptions(key = "text_$id") { options ->
+            options.copy(texts = options.texts.map { if (it.id == id) transform(it) else it })
+        }
+    }
+
+    fun moveText(id: Long, x: Float, y: Float) {
+        updateText(id) { it.copy(x = x.coerceIn(0.02f, 0.98f), y = y.coerceIn(0.02f, 0.98f)) }
+    }
+
+    fun removeText(id: Long) {
+        updateOptions { options -> options.copy(texts = options.texts.filterNot { it.id == id }) }
+        _state.update { if (it.selectedTextId == id) it.copy(selectedTextId = null) else it }
+    }
+
     fun undo() {
         val previous = undoStack.removeLastOrNull() ?: return
-        val current = _state.value
-        redoStack.addLast(Snapshot(current.clip, current.options))
+        redoStack.addLast(snapshot(_state.value))
         coalesceKey = null
-        _state.update {
-            it.copy(
-                clip = previous.clip,
-                options = previous.options,
-                canUndo = undoStack.isNotEmpty(),
-                canRedo = true
-            )
-        }
+        restore(previous, canUndo = undoStack.isNotEmpty(), canRedo = true)
     }
 
     fun redo() {
         val next = redoStack.removeLastOrNull() ?: return
-        val current = _state.value
-        undoStack.addLast(Snapshot(current.clip, current.options))
+        undoStack.addLast(snapshot(_state.value))
         coalesceKey = null
-        _state.update {
-            it.copy(
-                clip = next.clip,
-                options = next.options,
-                canUndo = true,
-                canRedo = redoStack.isNotEmpty()
-            )
-        }
+        restore(next, canUndo = true, canRedo = redoStack.isNotEmpty())
     }
 
     fun reset() {
         val current = _state.value
         if (!current.hasEdits) return
-        record(Snapshot(current.clip, current.options))
+        record(snapshot(current))
         coalesceKey = null
-        _state.update { it.copy(clip = original, options = ExportOptions()) }
+        val firstChanged = current.segments.first().clip.uri != original.first().clip.uri
+        _state.update {
+            it.copy(segments = original, selected = 0, options = ExportOptions(), selectedTextId = null)
+        }
+        if (firstChanged) refreshSourceSize()
     }
 
     fun startExport() {
@@ -231,17 +334,15 @@ class EditorViewModel(
             val output = File(app.cacheDir, "Trimly_$stamp.mp4")
             try {
                 val outcome = exporter.exportDetailed(
-                    source = current.clip.uri,
-                    startMs = current.clip.startMs,
-                    endMs = current.clip.endMs,
+                    segments = current.segments.map { ExportSegment(it.clip.uri, it.clip.startMs, it.clip.endMs) },
                     options = resolveOptions(current),
                     output = output,
                     onProgress = { progress ->
-                        _state.update { s ->
-                            if (s.export is ExportStatus.Running) {
-                                s.copy(export = ExportStatus.Running(progress.fraction, progress.etaMs))
+                        _state.update { state ->
+                            if (state.export is ExportStatus.Running) {
+                                state.copy(export = ExportStatus.Running(progress.fraction, progress.etaMs))
                             } else {
-                                s
+                                state
                             }
                         }
                     }
@@ -282,12 +383,35 @@ class EditorViewModel(
         _state.update { it.copy(export = ExportStatus.Idle) }
     }
 
-    private fun commitClip(next: Clip) {
+    private fun snapshot(state: EditorState) = Snapshot(state.segments, state.selected, state.options)
+
+    private fun restore(snapshot: Snapshot, canUndo: Boolean, canRedo: Boolean) {
+        _state.update {
+            it.copy(
+                segments = snapshot.segments,
+                selected = snapshot.selected.coerceIn(0, snapshot.segments.lastIndex),
+                options = snapshot.options,
+                selectedTextId = it.selectedTextId?.takeIf { id -> snapshot.options.texts.any { text -> text.id == id } },
+                canUndo = canUndo,
+                canRedo = canRedo
+            )
+        }
+    }
+
+    private fun replaceSelected(state: EditorState, transform: (Clip) -> Clip): EditorState {
+        val index = state.selected.coerceIn(0, state.segments.lastIndex)
+        val updated = state.segments.toMutableList()
+        updated[index] = updated[index].copy(clip = transform(updated[index].clip))
+        return state.copy(segments = updated)
+    }
+
+    private fun commitClip(transform: (Clip) -> Clip) {
         val current = _state.value
+        val next = transform(current.clip)
         if (next == current.clip) return
-        record(Snapshot(current.clip, current.options))
+        record(snapshot(current))
         coalesceKey = null
-        _state.update { it.copy(clip = next) }
+        _state.update { state -> replaceSelected(state, transform) }
     }
 
     private fun record(snapshot: Snapshot) {
@@ -305,6 +429,40 @@ class EditorViewModel(
         if (width <= 0 || height <= 0) return state.options.copy(targetHeight = null)
         val target = if (width >= height) shortSide else (shortSide.toLong() * height / width).toInt()
         return state.options.copy(targetHeight = target - target % 2)
+    }
+
+    private fun refreshSourceSize() {
+        val first = _state.value.segments.firstOrNull() ?: return
+        _state.update { it.copy(sourceWidth = 0, sourceHeight = 0) }
+        loadSourceSize(first.clip.uri)
+    }
+
+    private fun loadSourceSize(uri: Uri) {
+        viewModelScope.launch {
+            val size = withContext(Dispatchers.IO) { readSize(uri) }
+            if (size != null) setSourceSize(size.first, size.second)
+        }
+    }
+
+    private fun keepAccess(uri: Uri) {
+        try {
+            app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun readDuration(uri: Uri): Long? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(app, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?.takeIf { it > 0L }
+        } catch (e: Exception) {
+            null
+        } finally {
+            retriever.release()
+        }
     }
 
     private fun readSize(uri: Uri): Pair<Int, Int>? {
