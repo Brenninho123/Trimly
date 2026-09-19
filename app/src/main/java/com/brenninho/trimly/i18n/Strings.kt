@@ -250,6 +250,10 @@ interface AppStrings {
     fun mergeCount(count: Int): String
     fun textFrom(start: String, end: String): String
     fun chipText(text: String): String
+    val menuAllTools: String
+    val menuShowAll: String
+    val menuShowLess: String
+    fun menuEdits(count: Int): String
 }
 
 object EnglishStrings : AppStrings {
@@ -515,6 +519,10 @@ object EnglishStrings : AppStrings {
     override fun mergeCount(count: Int) = "$count clips"
     override fun textFrom(start: String, end: String) = "From $start to $end"
     override fun chipText(text: String) = "Text: $text"
+    override val menuAllTools = "All tools"
+    override val menuShowAll = "Show all tools"
+    override val menuShowLess = "Show fewer tools"
+    override fun menuEdits(count: Int) = (if (count == 1) "1 edit" else "$count edits")
 }
 
 object PortugueseStrings : AppStrings {
@@ -780,6 +788,10 @@ object PortugueseStrings : AppStrings {
     override fun mergeCount(count: Int) = "$count clipes"
     override fun textFrom(start: String, end: String) = "De $start até $end"
     override fun chipText(text: String) = "Texto: $text"
+    override val menuAllTools = "Todas as ferramentas"
+    override val menuShowAll = "Mostrar todas as ferramentas"
+    override val menuShowLess = "Mostrar menos ferramentas"
+    override fun menuEdits(count: Int) = (if (count == 1) "1 edição" else "$count edições")
 }
 
 object SpanishStrings : AppStrings {
@@ -1045,6 +1057,10 @@ object SpanishStrings : AppStrings {
     override fun mergeCount(count: Int) = "$count clips"
     override fun textFrom(start: String, end: String) = "De $start a $end"
     override fun chipText(text: String) = "Texto: $text"
+    override val menuAllTools = "Todas las herramientas"
+    override val menuShowAll = "Mostrar todas las herramientas"
+    override val menuShowLess = "Mostrar menos herramientas"
+    override fun menuEdits(count: Int) = (if (count == 1) "1 edición" else "$count ediciones")
 }
 
 fun stringsFor(language: AppLanguage): AppStrings {
