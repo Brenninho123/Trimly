@@ -1,0 +1,139 @@
+name: Desktop
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "core/**"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "core/**"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Build desktop app (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows
+            runner: windows-latest
+            installer-task: packageMsi
+            installer-glob: desktop/build/compose/binaries/main/msi/*.msi
+          - os: linux
+            runner: ubuntu-latest
+            installer-task: packageDeb
+            installer-glob: desktop/build/compose/binaries/main/deb/*.deb
+          - os: macos
+            runner: macos-latest
+            installer-task: packageDmg
+            installer-glob: desktop/build/compose/binaries/main/dmg/*.dmg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: List Gradle projects
+        run: gradle projects -PtrimlyDesktop=true
+
+      - name: Download FFmpeg (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg-extract
+          $ffmpeg = Get-ChildItem -Path ffmpeg-extract -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path desktop/resources/windows | Out-Null
+          Copy-Item $ffmpeg.FullName desktop/resources/windows/ffmpeg.exe
+          Copy-Item (Join-Path $ffmpeg.DirectoryName "ffprobe.exe") desktop/resources/windows/ffprobe.exe
+          Get-ChildItem desktop/resources/windows
+
+      - name: Download FFmpeg (Linux)
+        if: matrix.os == 'linux'
+        shell: bash
+        run: |
+          url="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
+          curl -L "$url" -o ffmpeg.tar.xz
+          mkdir ffmpeg-extract
+          tar -xf ffmpeg.tar.xz -C ffmpeg-extract
+          ffmpeg_bin=$(find ffmpeg-extract -type f -name ffmpeg | head -n 1)
+          ffprobe_bin=$(find ffmpeg-extract -type f -name ffprobe | head -n 1)
+          mkdir -p desktop/resources/linux
+          cp "$ffmpeg_bin" desktop/resources/linux/ffmpeg
+          cp "$ffprobe_bin" desktop/resources/linux/ffprobe
+          chmod +x desktop/resources/linux/ffmpeg desktop/resources/linux/ffprobe
+          ls -l desktop/resources/linux
+
+      - name: Install FFmpeg (macOS)
+        if: matrix.os == 'macos'
+        shell: bash
+        run: |
+          brew install ffmpeg
+          mkdir -p desktop/resources/macos
+          cp "$(command -v ffmpeg)" desktop/resources/macos/ffmpeg
+          cp "$(command -v ffprobe)" desktop/resources/macos/ffprobe
+          ls -l desktop/resources/macos
+
+      - name: Build portable app
+        run: gradle :desktop:createDistributable -PtrimlyDesktop=true --stacktrace
+
+      - name: Zip portable app (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: Compress-Archive -Path desktop/build/compose/binaries/main/app/* -DestinationPath Trimly-windows.zip
+
+      - name: Zip portable app (Linux and macOS)
+        if: matrix.os != 'windows'
+        shell: bash
+        run: |
+          cd desktop/build/compose/binaries/main/app
+          zip -r "$GITHUB_WORKSPACE/Trimly-${{ matrix.os }}.zip" .
+
+      - name: Upload portable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Trimly-${{ matrix.os }}-portable
+          path: Trimly-${{ matrix.os }}.zip
+          if-no-files-found: error
+
+      - name: Build installer
+        continue-on-error: true
+        run: gradle :desktop:${{ matrix.installer-task }} -PtrimlyDesktop=true --stacktrace
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Trimly-${{ matrix.os }}-installer
+          path: ${{ matrix.installer-glob }}
+          if-no-files-found: ignore

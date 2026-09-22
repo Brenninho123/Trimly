@@ -46,7 +46,7 @@ import com.brenninho.trimly.i18n.stringsFor
 import com.brenninho.trimly.settings.LoginError
 import com.brenninho.trimly.settings.SettingsActions
 import com.brenninho.trimly.ui.TrimlyApp
-import com.brenninho.trimly.ui.theme.TrimlyTheme
+import com.brenninho.trimly.design.TrimlyTheme
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map

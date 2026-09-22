@@ -1,5 +1,7 @@
 package com.brenninho.trimly.desktop
 
+import com.brenninho.trimly.platform.Platform
+import com.brenninho.trimly.platform.PlatformKind
 import java.awt.Desktop
 import java.awt.FileDialog
 import java.awt.Frame
@@ -53,11 +55,10 @@ fun chooseSaveFile(parent: Frame, source: File): File? {
 
 fun showInFolder(file: File) {
     try {
-        val system = System.getProperty("os.name").orEmpty().lowercase()
-        if (system.contains("win")) {
-            ProcessBuilder("explorer.exe", "/select,", file.absolutePath).start()
-        } else {
-            Desktop.getDesktop().open(file.parentFile)
+        when (Platform.kind) {
+            PlatformKind.WINDOWS -> ProcessBuilder("explorer.exe", "/select,", file.absolutePath).start()
+            PlatformKind.MACOS -> ProcessBuilder("open", "-R", file.absolutePath).start()
+            else -> Desktop.getDesktop().open(file.parentFile)
         }
     } catch (e: Exception) {
     }

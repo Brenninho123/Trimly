@@ -106,7 +106,7 @@ fun FrameWindowScope.DesktopApp(initial: File?) {
     val open: (File) -> Unit = { file ->
         val available = tools
         if (available == null) {
-            message = "FFmpeg was not found. Put ffmpeg.exe and ffprobe.exe next to the app or add them to your PATH."
+            message = "FFmpeg was not found. Put ${Ffmpeg.ffmpegName} and ${Ffmpeg.ffprobeName} next to the app or add them to your PATH."
         } else {
             scope.launch {
                 loading = true
@@ -206,7 +206,7 @@ private fun HomeScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "FFmpeg was not found. Put ffmpeg.exe and ffprobe.exe next to the app, in a folder named ffmpeg, or add them to your PATH.",
+                        text = "FFmpeg was not found. Put ${Ffmpeg.ffmpegName} and ${Ffmpeg.ffprobeName} next to the app, in a folder named ffmpeg, or add them to your PATH.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.padding(16.dp)
