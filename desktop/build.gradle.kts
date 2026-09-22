@@ -10,14 +10,13 @@ kotlin {
     jvmToolchain(17)
 }
 
-kotlin.sourceSets["main"].kotlin.srcDir("../app/src/main/java/com/brenninho/trimly/model")
-kotlin.sourceSets["main"].kotlin.exclude("**/Clip.kt")
-
 dependencies {
+    implementation(project(":core"))
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0")
+    implementation("org.json:json:20240303")
 }
 
 compose.desktop {
@@ -25,7 +24,7 @@ compose.desktop {
         mainClass = "com.brenninho.trimly.desktop.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Msi, TargetFormat.Exe)
+            targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Dmg, TargetFormat.Deb)
             packageName = "Trimly"
             packageVersion = "1.0.0"
             description = "A free video editor"
@@ -39,7 +38,22 @@ compose.desktop {
                 dirChooser = true
                 perUserInstall = true
                 upgradeUuid = "8f6c3a52-5d1e-4b7a-9c0e-2f4a6b1d9e33"
-                iconFile.set(project.file("icons/trimly.ico"))
+                iconFile.set(project.file("src/main/resources/trimly.ico"))
+            }
+
+            macOS {
+                bundleID = "com.brenninho.trimly"
+                dockName = "Trimly"
+                val icnsFile = project.file("icons/trimly.icns")
+                if (icnsFile.isFile) {
+                    iconFile.set(icnsFile)
+                }
+            }
+
+            linux {
+                shortcut = true
+                packageName = "trimly"
+                iconFile.set(project.file("src/main/resources/icon.png"))
             }
         }
     }

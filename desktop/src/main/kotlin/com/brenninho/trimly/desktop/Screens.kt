@@ -23,7 +23,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -76,6 +75,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
+import com.brenninho.trimly.design.TrimlyElevation
+import com.brenninho.trimly.design.TrimlySpacing
 import com.brenninho.trimly.model.Adjustment
 import com.brenninho.trimly.model.ColorMath
 import com.brenninho.trimly.model.FilterGroup
@@ -106,7 +107,7 @@ fun FrameWindowScope.DesktopApp(initial: File?) {
     val open: (File) -> Unit = { file ->
         val available = tools
         if (available == null) {
-            message = "FFmpeg was not found. Put ffmpeg.exe and ffprobe.exe next to the app or add them to your PATH."
+            message = "FFmpeg was not found. Put ${Ffmpeg.ffmpegName} and ${Ffmpeg.ffprobeName} next to the app or add them to your PATH."
         } else {
             scope.launch {
                 loading = true
@@ -123,10 +124,20 @@ fun FrameWindowScope.DesktopApp(initial: File?) {
     }
 
     LaunchedEffect(Unit) {
+        DiscordRpc.start(scope)
         initial?.let(open)
     }
 
     val current = controller
+    LaunchedEffect(current?.file) {
+        val file = current?.file
+        if (file == null) {
+            DiscordRpc.setBrowsing()
+        } else {
+            DiscordRpc.setEditing(file.name, System.currentTimeMillis())
+        }
+    }
+
     if (current == null) {
         HomeScreen(
             loading = loading,
@@ -171,23 +182,23 @@ private fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .width(520.dp)
-                .padding(24.dp)
+                .padding(TrimlySpacing.l)
         ) {
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(84.dp)
+                    .size(88.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                    .background(MaterialTheme.colorScheme.primaryContainer)
             ) {
                 Icon(
                     imageVector = Icons.Filled.VideoLibrary,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(42.dp)
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(44.dp)
                 )
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(TrimlySpacing.m))
             Text(
                 text = "Trimly",
                 style = MaterialTheme.typography.headlineLarge,
@@ -198,51 +209,68 @@ private fun HomeScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(TrimlySpacing.l))
 
             if (ffmpegMissing) {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "FFmpeg was not found. Put ffmpeg.exe and ffprobe.exe next to the app, in a folder named ffmpeg, or add them to your PATH.",
+                        text = "FFmpeg was not found. Put ${Ffmpeg.ffmpegName} and ${Ffmpeg.ffprobeName} next to the app, in a folder named ffmpeg, or add them to your PATH.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.padding(16.dp)
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(TrimlySpacing.m)
                     )
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(TrimlySpacing.m))
             }
 
             Button(
                 onClick = onBrowse,
                 enabled = !loading && !ffmpegMissing,
+                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
             ) {
                 Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(TrimlySpacing.xs))
                 Text("Open video")
             }
 
             if (loading) {
-                Spacer(Modifier.height(12.dp))
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(TrimlySpacing.s))
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.extraSmall)
+                )
             }
 
             if (recents.isNotEmpty()) {
-                Spacer(Modifier.height(28.dp))
+                Spacer(Modifier.height(TrimlySpacing.xl))
                 Text(
                     text = "Recent",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.align(Alignment.Start)
                 )
-                Spacer(Modifier.height(8.dp))
-                recents.forEach { file ->
-                    RecentRow(file = file, enabled = !loading && !ffmpegMissing, onClick = { onOpen(file) })
+                Spacer(Modifier.height(TrimlySpacing.xs))
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    tonalElevation = TrimlyElevation.low,
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(vertical = TrimlySpacing.xxs)) {
+                        recents.forEach { file ->
+                            RecentRow(file = file, enabled = !loading && !ffmpegMissing, onClick = { onOpen(file) })
+                        }
+                    }
                 }
             }
         }
@@ -259,16 +287,25 @@ private fun RecentRow(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(MaterialTheme.shapes.small)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = TrimlySpacing.s, vertical = TrimlySpacing.xs)
     ) {
-        Icon(
-            imageVector = Icons.Filled.Movie,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.width(12.dp))
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(36.dp)
+                .clip(MaterialTheme.shapes.small)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Movie,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Spacer(Modifier.width(TrimlySpacing.s))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = file.name,
@@ -329,16 +366,16 @@ private fun EditorScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .padding(16.dp)
+                    .padding(TrimlySpacing.m)
             ) {
                 PreviewPane(
                     controller = controller,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(MaterialTheme.shapes.large)
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(TrimlySpacing.s))
                 TimelineSection(controller)
             }
 
@@ -386,12 +423,12 @@ private fun EditorTopBar(
     onClose: () -> Unit,
     onExport: () -> Unit
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface) {
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = TrimlyElevation.low) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = TrimlySpacing.s, vertical = TrimlySpacing.xs)
         ) {
             IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, contentDescription = "Close editor")
@@ -399,7 +436,7 @@ private fun EditorTopBar(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 8.dp)
+                    .padding(start = TrimlySpacing.xs)
             ) {
                 Text(
                     text = controller.file.name,
@@ -414,11 +451,15 @@ private fun EditorTopBar(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            OutlinedButton(onClick = controller::reset, enabled = controller.hasEdits) {
+            OutlinedButton(
+                onClick = controller::reset,
+                enabled = controller.hasEdits,
+                shape = MaterialTheme.shapes.small
+            ) {
                 Text("Reset")
             }
-            Spacer(Modifier.width(8.dp))
-            Button(onClick = onExport, enabled = controller.canExport) {
+            Spacer(Modifier.width(TrimlySpacing.xs))
+            Button(onClick = onExport, enabled = controller.canExport, shape = MaterialTheme.shapes.small) {
                 Text("Export")
             }
         }
@@ -492,13 +533,13 @@ private fun TimelineSection(controller: EditorController) {
             TimeLabel("Playhead", formatTime(controller.positionMs - controller.startMs), TextAlign.Center)
             TimeLabel("Length", formatTime(controller.trimmedMs), TextAlign.End)
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(TrimlySpacing.xs))
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(MaterialTheme.shapes.small)
         ) {
             controller.strip.forEach { image ->
                 Box(
@@ -568,7 +609,12 @@ private fun SidePanel(
     onTab: (PanelTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.background(MaterialTheme.colorScheme.surface)) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = TrimlyElevation.low,
+        modifier = modifier
+    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         ScrollableTabRow(
             selectedTabIndex = tab.ordinal,
             edgePadding = 0.dp,
@@ -596,6 +642,7 @@ private fun SidePanel(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -604,11 +651,11 @@ private fun EditPanel(controller: EditorController) {
     val rotated = options.rotationDegrees % 360 != 0
 
     Column(
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(TrimlySpacing.s),
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(TrimlySpacing.m)
     ) {
         Text("Trim", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         Text(
@@ -616,19 +663,27 @@ private fun EditPanel(controller: EditorController) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = controller::setStartAtPlayhead, modifier = Modifier.weight(1f)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(TrimlySpacing.xs)) {
+            OutlinedButton(
+                onClick = controller::setStartAtPlayhead,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.weight(1f)
+            ) {
                 Text("Set start")
             }
-            OutlinedButton(onClick = controller::setEndAtPlayhead, modifier = Modifier.weight(1f)) {
+            OutlinedButton(
+                onClick = controller::setEndAtPlayhead,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.weight(1f)
+            ) {
                 Text("Set end")
             }
         }
 
-        HorizontalDivider()
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
         Text("Transform", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(TrimlySpacing.xs)) {
             FilterChip(
                 selected = rotated,
                 onClick = controller::rotate,
@@ -655,7 +710,7 @@ private fun EditPanel(controller: EditorController) {
             )
         }
 
-        HorizontalDivider()
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
         Text("Audio", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         FilterChip(
@@ -680,14 +735,15 @@ private fun EditPanel(controller: EditorController) {
             }
         )
 
-        HorizontalDivider()
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
         OutlinedButton(
             onClick = { openWithSystem(controller.file) },
+            shape = MaterialTheme.shapes.small,
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(TrimlySpacing.xs))
             Text("Play original in system player")
         }
     }
@@ -768,7 +824,7 @@ private fun FilterCard(
     frame: ImageBitmap?,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = MaterialTheme.shapes.medium
     val primary = MaterialTheme.colorScheme.primary
 
     Column(
@@ -776,7 +832,7 @@ private fun FilterCard(
         modifier = Modifier
             .clip(shape)
             .clickable(onClick = onClick)
-            .padding(4.dp)
+            .padding(TrimlySpacing.xxs)
     ) {
         Box(
             modifier = Modifier
@@ -795,7 +851,7 @@ private fun FilterCard(
                 )
             }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(TrimlySpacing.xxs))
         Text(
             text = filter.label,
             style = MaterialTheme.typography.labelSmall,
@@ -814,7 +870,7 @@ private fun AdjustPanel(controller: EditorController) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(TrimlySpacing.m)
     ) {
         Adjustment.entries.forEach { kind ->
             val value = options.adjustment(kind)
@@ -856,11 +912,11 @@ private fun OutputPanel(controller: EditorController) {
     val options = controller.options
 
     Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(TrimlySpacing.xs),
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(TrimlySpacing.m)
     ) {
         Text("Resolution", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         QualityRow(
@@ -871,7 +927,10 @@ private fun OutputPanel(controller: EditorController) {
             QualityRow(label = "${side}p", selected = options.shortSide == side) { controller.setQuality(side) }
         }
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant,
+            modifier = Modifier.padding(vertical = TrimlySpacing.xs)
+        )
 
         Text("Format", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         Text(
@@ -892,14 +951,16 @@ private fun QualityRow(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
             .clickable(onClick = onClick)
+            .padding(vertical = TrimlySpacing.xxs)
     ) {
         RadioButton(selected = selected, onClick = onClick)
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(start = 8.dp)
+            modifier = Modifier.padding(start = TrimlySpacing.xs)
         )
     }
 }

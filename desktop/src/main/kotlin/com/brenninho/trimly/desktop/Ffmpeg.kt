@@ -3,6 +3,8 @@ package com.brenninho.trimly.desktop
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import com.brenninho.trimly.model.ExportOptions
+import com.brenninho.trimly.platform.Platform
+import com.brenninho.trimly.platform.PlatformKind
 import java.io.File
 import java.io.IOException
 import java.util.Locale
@@ -28,8 +30,11 @@ data class VideoInfo(
 
 object Ffmpeg {
 
-    private val suffix = if (System.getProperty("os.name").orEmpty().lowercase().contains("win")) ".exe" else ""
+    private val suffix = if (Platform.kind == PlatformKind.WINDOWS) ".exe" else ""
     private val progressLine = Regex("^[A-Za-z_0-9]+=")
+
+    val ffmpegName: String get() = "ffmpeg$suffix"
+    val ffprobeName: String get() = "ffprobe$suffix"
 
     fun locate(): Tools? {
         val ffmpeg = find("ffmpeg") ?: return null

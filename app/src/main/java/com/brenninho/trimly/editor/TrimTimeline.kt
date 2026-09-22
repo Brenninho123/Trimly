@@ -139,7 +139,7 @@ fun TrimTimeline(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = handleWidth)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(MaterialTheme.shapes.extraSmall)
         ) {
             if (frames.isEmpty()) {
                 Box(

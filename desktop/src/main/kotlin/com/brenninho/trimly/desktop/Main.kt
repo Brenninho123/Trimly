@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.brenninho.trimly.design.TrimlyTheme
 import java.io.File
 
 fun main(args: Array<String>) = application {
@@ -22,7 +23,10 @@ fun main(args: Array<String>) = application {
     }
 
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = {
+            DiscordRpc.shutdown()
+            exitApplication()
+        },
         title = "Trimly",
         state = windowState,
         icon = icon

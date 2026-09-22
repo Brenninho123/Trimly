@@ -106,6 +106,8 @@ dependencies {
     val lifecycle = "2.8.7"
     val coroutines = "1.9.0"
 
+    implementation(project(":core"))
+
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")

@@ -1,10 +1,11 @@
 # Trimly
 
-A free, open source video editor for Android and Windows. Trim, merge, add text, apply filters and export, all on your own device. No account, no upload, no watermark.
+A free, open source video editor for Android, Windows, macOS, Linux, and iOS (experimental). Trim, merge, add text, apply filters and export, all on your own device. No account, no upload, no watermark.
 
-[![Build APK](https://github.com/Brenninho123/Trimly/actions/workflows/build.yml/badge.svg)](https://github.com/Brenninho123/Trimly/actions/workflows/build.yml)
-[![Windows](https://github.com/Brenninho123/Trimly/actions/workflows/windows.yml/badge.svg)](https://github.com/Brenninho123/Trimly/actions/workflows/windows.yml)
-![Platform](https://img.shields.io/badge/platform-Android%207.0%2B%20%7C%20Windows-3DDC84)
+[![Build APK](https://github.com/Brenninho123/Trimly/actions/workflows/android.yml/badge.svg)](https://github.com/Brenninho123/Trimly/actions/workflows/android.yml)
+[![Desktop](https://github.com/Brenninho123/Trimly/actions/workflows/desktop.yml/badge.svg)](https://github.com/Brenninho123/Trimly/actions/workflows/desktop.yml)
+[![iOS](https://github.com/Brenninho123/Trimly/actions/workflows/ios.yml/badge.svg)](https://github.com/Brenninho123/Trimly/actions/workflows/ios.yml)
+![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20iOS-3DDC84)
 ![Language](https://img.shields.io/badge/language-Kotlin-7F52FF)
 ![Languages](https://img.shields.io/badge/app%20languages-EN%20%7C%20PT%20%7C%20ES-blue)
 ![License](https://img.shields.io/badge/license-Unlicense-lightgrey)
@@ -27,7 +28,8 @@ A free, open source video editor for Android and Windows. Trim, merge, add text,
   - [Localization](#localization)
   - [Settings and Discord login](#settings-and-discord-login)
   - [Intents, shortcuts and deep links](#intents-shortcuts-and-deep-links)
-  - [Windows app](#windows-app)
+  - [Desktop app](#desktop-app)
+  - [iOS app (experimental)](#ios-app-experimental)
   - [Continuous integration](#continuous-integration)
 - [Troubleshooting](#troubleshooting)
 - [Known limitations](#known-limitations)
@@ -82,7 +84,8 @@ Speed, split, volume and fade appear in the menu as "soon".
 
 - Android 7.0 (API 24) or newer to run the app
 - JDK 17, Android Studio and Android SDK 35 to build it
-- Windows 10 or newer to run the desktop app
+- Windows 10, macOS 12 or a recent Linux distribution to run the desktop app
+- A Mac with Xcode to build the experimental iOS app
 
 ### Build the Android app
 
@@ -108,15 +111,25 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Every push to `main` runs the **Build APK** workflow. Open the latest run in the **Actions** tab and download the `Trimly-debug` artifact.
 
-### Build the Windows app
+### Build the desktop app
 
 ```bash
 gradle :desktop:run -PtrimlyDesktop=true
 gradle :desktop:createDistributable -PtrimlyDesktop=true
-gradle :desktop:packageMsi -PtrimlyDesktop=true
+gradle :desktop:packageMsi -PtrimlyDesktop=true   # Windows
+gradle :desktop:packageDmg -PtrimlyDesktop=true   # macOS
+gradle :desktop:packageDeb -PtrimlyDesktop=true   # Linux
 ```
 
-Details are in [Windows app](#windows-app).
+Details are in [Desktop app](#desktop-app).
+
+### Build the iOS app (experimental)
+
+```bash
+gradle :iosApp:linkDebugFrameworkIosSimulatorArm64 -PtrimlyIos=true
+```
+
+This requires a Mac with Xcode. Details are in [iOS app (experimental)](#ios-app-experimental).
 
 ## Using the app
 
@@ -191,17 +204,22 @@ MainViewModel             recents, open flow, settings, Discord login
 EditorViewModel           segments, options, text items, history, export job
 
 engine                    VideoExporter, EffectsFactory, TextOverlays, MediaSaver
-model                     Clip, ExportOptions, TextItem, VideoFilter, ColorMath
 i18n                      AppStrings and the three language objects
+
+core (Kotlin Multiplatform, shared by app, desktop and iosApp)
+  model                   ExportOptions, TextItem, VideoFilter, ColorMath
+  design                  TrimlyTheme, TrimlyColors, TrimlyShapes, TrimlyTypography
+  platform                Platform (androidTarget, desktop jvm, iOS actuals)
+  engine                  ExportEngine contract, AvFoundationExportEngine (iOS)
 ```
 
 Design rules:
 
-- The UI is Jetpack Compose with Material 3 and a dark theme.
-- State lives in two view models exposed as `StateFlow`.
-- The `model` package is pure Kotlin except `Clip`. It is shared with the desktop module.
-- The `engine` package has no Compose dependency.
-- Every user-facing string goes through `AppStrings`.
+- The UI is Jetpack Compose (Compose Multiplatform on desktop and iOS) with Material 3 and a dark theme.
+- State lives in two view models exposed as `StateFlow` on Android; desktop and iOS use lighter Compose-state controllers with the same shape.
+- The `core` module is a Kotlin Multiplatform module: `model` and `design` are pure common Kotlin, shared unchanged by every platform. `Clip` stays in the Android `app` module because it wraps `android.net.Uri`.
+- The `engine` package (Android) has no Compose dependency. Desktop and iOS have their own engines (FFmpeg processes, AVFoundation) behind the same shape.
+- Every user-facing string on Android goes through `AppStrings`.
 
 ### Project structure
 
@@ -241,10 +259,6 @@ app/src/main/java/com/brenninho/trimly/
     Strings.kt
   model/
     Clip.kt
-    ExportOptions.kt
-    TextItem.kt
-    VideoFilter.kt
-    ColorMath.kt
   settings/
     AppSettings.kt
     SettingsModels.kt
@@ -252,15 +266,32 @@ app/src/main/java/com/brenninho/trimly/
     HomeScreen.kt
     SettingsSheet.kt
     TrimlyApp.kt
-    theme/Theme.kt
+
+core/
+  build.gradle.kts
+  src/commonMain/kotlin/com/brenninho/trimly/
+    model/
+    design/
+    platform/
+    engine/
+  src/androidMain/kotlin/com/brenninho/trimly/platform/
+  src/desktopMain/kotlin/com/brenninho/trimly/platform/
+  src/iosMain/kotlin/com/brenninho/trimly/
+    platform/
+    engine/AvFoundationExportEngine.kt
 
 desktop/
   build.gradle.kts
   src/main/kotlin/com/brenninho/trimly/desktop/
 
+iosApp/
+  build.gradle.kts
+  src/iosMain/kotlin/com/brenninho/trimly/ios/
+
 .github/workflows/
-  build.yml
-  windows.yml
+  android.yml
+  desktop.yml
+  ios.yml
 ```
 
 ### Core models
@@ -549,9 +580,9 @@ Launcher shortcuts:
 
 When the app is launched again from the recent apps screen, the original intent is ignored so the same video is not opened twice.
 
-### Windows app
+### Desktop app
 
-The `desktop` module is a Compose Desktop application. It is not part of the Android build unless you enable it.
+The `desktop` module is a Compose Desktop application targeting Windows, macOS and Linux. It is not part of the Android build unless you enable it.
 
 ```bash
 gradle :desktop:run -PtrimlyDesktop=true
@@ -561,11 +592,13 @@ The property name has no dot on purpose. PowerShell splits arguments such as `-P
 
 | Topic | Details |
 | --- | --- |
-| Toolkit | Compose Multiplatform 1.7.1, Material 3 |
-| Shared code | The `model` folder of the Android app, except `Clip.kt` |
+| Toolkit | Compose Multiplatform 1.7.1, Material 3, shared `TrimlyTheme` from `core` |
+| Shared code | The `core` module's `model` and `design` packages |
 | Video engine | FFmpeg and FFprobe, called as external processes |
 | Preview | Still frames, with colors and rotation applied in Compose |
 | Export | H.264 video and AAC audio in MP4, progress and cancel |
+| Packaging | MSI/EXE on Windows, DMG on macOS, DEB on Linux |
+| Discord Rich Presence | Shows "Browsing videos" or "Editing \<file\>" in the desktop Discord client, when it is running |
 
 FFmpeg is located in this order:
 
@@ -574,16 +607,45 @@ FFmpeg is located in this order:
 3. A folder named `ffmpeg` next to the app
 4. The `PATH`
 
-Features on Windows: open a video, recent files, trim with a range slider, filters, effects, adjustments, rotate, flip, mute, resolution and export. Not available yet: playback inside the editor, undo and redo, merge, text, and the Android quality levels.
+Features on desktop: open a video, recent files, trim with a range slider, filters, effects, adjustments, rotate, flip, mute, resolution and export. Not available yet: playback inside the editor, undo and redo, merge, text, and the Android quality levels.
 
-The CI workflow downloads a GPL build of FFmpeg and bundles it. Distributing that binary requires following the FFmpeg license in addition to this project license.
+The CI workflow downloads or installs FFmpeg per OS and bundles it. Distributing that binary requires following the FFmpeg license in addition to this project license.
+
+#### Discord Rich Presence
+
+`DiscordRpc` (desktop only) talks to the local Discord desktop client over its IPC socket: a named pipe (`\\.\pipe\discord-ipc-0` through `-9`) on Windows, a Unix domain socket (under `XDG_RUNTIME_DIR`, `TMPDIR`, `TMP`, `TEMP` or `/tmp`) on macOS and Linux. It uses the same Discord application ID as `DiscordAuth.CLIENT_ID` (the Android login), kept as its own constant since `desktop` does not depend on the Android `app` module.
+
+- On launch, it connects in the background and retries every 15 seconds until it succeeds; it never blocks the UI and never shows an error when Discord is not running.
+- The activity is set to "Browsing videos" on the home screen and "Editing \<file name\>" with an elapsed timer in the editor.
+- Closing the window closes the IPC connection, which clears the presence on the Discord side.
+- The large image asset key `trimly_logo` is sent but not bundled with the repository; upload it under **Rich Presence > Art Assets** for the same application in the Discord Developer Portal to show an icon, or leave it unset.
+
+### iOS app (experimental)
+
+The `iosApp` module is a Compose Multiplatform iOS app that shares the `core` module's `model`, `design` and `engine` code with Android and desktop. It is gated behind its own Gradle property and needs a Mac with Xcode:
+
+```bash
+gradle :iosApp:linkDebugFrameworkIosSimulatorArm64 -PtrimlyIos=true
+```
+
+| Topic | Details |
+| --- | --- |
+| Toolkit | Compose Multiplatform 1.7.1 for iOS, `ComposeUIViewController` |
+| Shared code | The `core` module's `model`, `design` and `engine` packages |
+| Video engine | `AvFoundationExportEngine`, built on `AVMutableComposition` and `AVAssetExportSession` |
+| Open a video | `UIDocumentPickerViewController` |
+
+This target was built without access to a Mac or Xcode, so it has **not been compiled or run**. Treat it as scaffolding: open `iosApp` in Xcode (or run the Gradle tasks above) on a Mac to build it for the first time, and expect to fix interop or API-surface issues there. The `ios.yml` CI workflow compiles it on a `macos-latest` runner on every push, which is the first real verification this code gets.
+
+Current iOS feature set: open a video, trim, rotate, flip, mute and export to MP4. Not available yet: playback inside the editor, filters and effects, adjustments, merge, text and undo/redo — the same shape the desktop app started with.
 
 ### Continuous integration
 
 | Workflow | Trigger | Output |
 | --- | --- | --- |
-| `build.yml` | Push, pull request, manual | `Trimly-debug` APK artifact |
-| `windows.yml` | Changes in `desktop`, `model`, Gradle files, manual | `Trimly-windows-portable` zip and an MSI when available |
+| `android.yml` | Push, pull request, manual | `Trimly-debug` APK artifact |
+| `desktop.yml` | Changes in `desktop`, `core`, Gradle files, manual | Portable zip and an installer (MSI/DMG/DEB) for Windows, macOS and Linux |
+| `ios.yml` | Changes in `iosApp`, `core`, Gradle files, manual | Compiles the iOS simulator target on a `macos-latest` runner |
 
 ## Troubleshooting
 
@@ -591,6 +653,7 @@ The CI workflow downloads a GPL build of FFmpeg and bundles it. Distributing tha
 | --- | --- |
 | `Unresolved reference` or `No parameter with name` after an update | Files from different versions are mixed. Replace all the files of the update together, especially `ExportOptions`, `EditorViewModel`, `EditorScreen`, `EditorMenu`, `StylePanel`, `ExportDialog` and `Strings` |
 | `project 'desktop' not found` | Pass `-PtrimlyDesktop=true` to Gradle |
+| `project 'iosApp' not found` | Pass `-PtrimlyIos=true` to Gradle, and build on a Mac with Xcode |
 | Discord login does not return to the app | The redirect is not registered in the Discord portal, or it differs from `com.brenninho.trimly://oauth/discord` |
 | Export says there is not enough storage | Free space on the device. The check is an estimate with a safety margin |
 | Export fails on some videos | The device may not support the format. Try a lower resolution or the Standard quality |
@@ -604,7 +667,8 @@ The CI workflow downloads a GPL build of FFmpeg and bundles it. Distributing tha
 - Merge previews one clip at a time.
 - Text uses the system font and has no rotation.
 - HDR content is not tone mapped.
-- The Windows app has no playback and no merge or text.
+- The desktop app has no playback and no merge or text.
+- The iOS app has no playback, filters, effects, adjustments, merge, text or undo/redo, and has not been built or run outside of CI.
 - Exports run only while the editor is open.
 
 ## Roadmap
@@ -613,8 +677,9 @@ The CI workflow downloads a GPL build of FFmpeg and bundles it. Distributing tha
 - [ ] Split a clip in two
 - [ ] Volume and audio fades
 - [ ] Text styles, fonts and animations
-- [ ] Merge and text on Windows
-- [ ] Playback in the Windows editor
+- [ ] Merge and text on desktop and iOS
+- [ ] Playback in the desktop and iOS editors
+- [ ] Filters and effects on iOS
 - [ ] Release signing and store distribution
 
 ## Contributing
@@ -626,9 +691,9 @@ The CI workflow downloads a GPL build of FFmpeg and bundles it. Distributing tha
 
 Project conventions:
 
-- Keep the `engine` package free of Compose code.
+- Keep the Android `engine` package free of Compose code.
 - Add every new user-facing string to `AppStrings` in all three languages.
-- Keep `model` free of Android types so the desktop module can use it. `Clip` is the only exception.
+- Keep `core` (`commonMain`) free of platform types, so every target can use it. `Clip` is the one model class that stays Android-only, in `app/model`, because it wraps `android.net.Uri`.
 - The code base avoids comments, so prefer descriptive names.
 
 ## License
