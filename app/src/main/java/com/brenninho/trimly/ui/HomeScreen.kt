@@ -173,6 +173,8 @@ import com.brenninho.trimly.data.ImportActions
 import com.brenninho.trimly.data.ImportState
 import com.brenninho.trimly.data.RecentVideo
 import com.brenninho.trimly.data.ThumbnailLoader
+import com.brenninho.trimly.design.TrimlyElevation
+import com.brenninho.trimly.design.TrimlySpacing
 import com.brenninho.trimly.i18n.AppStrings
 import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.settings.DiscordProfile
@@ -678,10 +680,10 @@ fun HomeScreen(
                                     }
                                 },
                                 colors = TopAppBarDefaults.topAppBarColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
-                                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                             )
                         }
@@ -1018,13 +1020,14 @@ private fun HeroCard(
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(28.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = TrimlyElevation.low),
+        shape = MaterialTheme.shapes.extraLarge,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
+                .padding(TrimlySpacing.l),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -1047,12 +1050,12 @@ private fun HeroCard(
                         modifier = Modifier
                             .size(72.dp)
                             .clip(CircleShape)
-                            .background(primary.copy(alpha = 0.16f))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
                     ) {
                         Icon(
                             imageVector = Icons.Filled.VideoLibrary,
                             contentDescription = null,
-                            tint = primary,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(36.dp)
                         )
                     }
@@ -1158,21 +1161,22 @@ private fun ContinueCard(
         onClick = onOpen,
         enabled = enabled,
         interactionSource = source,
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = TrimlyElevation.low),
         modifier = Modifier
             .fillMaxWidth()
             .pressScale(source)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(12.dp)
+            modifier = Modifier.padding(TrimlySpacing.s)
         ) {
             Box(
                 modifier = Modifier
                     .width(120.dp)
                     .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(MaterialTheme.shapes.medium)
             ) {
                 VideoThumbnail(uri = item.uri, modifier = Modifier.fillMaxSize())
                 Box(
@@ -1258,11 +1262,12 @@ private fun StatCard(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface,
+        tonalElevation = TrimlyElevation.low,
         modifier = modifier
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(TrimlySpacing.s)) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
@@ -1298,22 +1303,22 @@ private fun TipCard(onDismiss: () -> Unit) {
     }
 
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp)
+            modifier = Modifier.padding(start = TrimlySpacing.m, top = TrimlySpacing.xxs, bottom = TrimlySpacing.xxs, end = TrimlySpacing.xxs)
         ) {
             Icon(
                 imageVector = Icons.Filled.AutoAwesome,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
+                tint = MaterialTheme.colorScheme.onTertiaryContainer
             )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(TrimlySpacing.s))
             AnimatedContent(
                 targetState = index,
                 modifier = Modifier.weight(1f),
@@ -1325,14 +1330,14 @@ private fun TipCard(onDismiss: () -> Unit) {
                 Text(
                     text = s.tips[current % s.tips.size],
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
             }
             IconButton(onClick = onDismiss) {
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = s.close,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
                 )
             }
         }
@@ -1378,8 +1383,9 @@ private fun ToolCard(
         onClick = onClick,
         enabled = enabled,
         interactionSource = source,
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
+        tonalElevation = TrimlyElevation.low,
         modifier = Modifier
             .width(92.dp)
             .pressScale(source)
@@ -1387,7 +1393,7 @@ private fun ToolCard(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .padding(vertical = 12.dp, horizontal = 8.dp)
+                .padding(vertical = TrimlySpacing.s, horizontal = TrimlySpacing.xs)
                 .graphicsLayer { alpha = if (tool.available) 1f else 0.6f }
         ) {
             Box(
@@ -1706,10 +1712,10 @@ private fun ItemSurface(
 ) {
     val s = LocalStrings.current
     val source = remember { MutableInteractionSource() }
-    val shape = RoundedCornerShape(16.dp)
+    val shape = MaterialTheme.shapes.medium
     val primary = MaterialTheme.colorScheme.primary
     val container by animateColorAsState(
-        targetValue = if (selected) primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
         animationSpec = tween(200),
         label = "itemContainer"
     )
@@ -1722,6 +1728,7 @@ private fun ItemSurface(
     Surface(
         shape = shape,
         color = container,
+        tonalElevation = if (selected) TrimlyElevation.flat else TrimlyElevation.low,
         border = BorderStroke(2.dp, borderColor),
         modifier = modifier
             .fillMaxWidth()
@@ -1929,7 +1936,7 @@ private fun Thumb(
     Box(
         modifier = modifier
             .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(MaterialTheme.shapes.medium)
     ) {
         VideoThumbnail(uri = item.uri, modifier = Modifier.fillMaxSize())
         if (showDuration) {

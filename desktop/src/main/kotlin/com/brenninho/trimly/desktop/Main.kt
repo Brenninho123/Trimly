@@ -23,7 +23,10 @@ fun main(args: Array<String>) = application {
     }
 
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = {
+            DiscordRpc.shutdown()
+            exitApplication()
+        },
         title = "Trimly",
         state = windowState,
         icon = icon

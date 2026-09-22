@@ -379,6 +379,7 @@ fun EditorScreen(
                     Button(
                         onClick = viewModel::startExport,
                         enabled = state.canExport,
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier.padding(start = 4.dp, end = 8.dp)
                     ) {
                         Text(s.export)

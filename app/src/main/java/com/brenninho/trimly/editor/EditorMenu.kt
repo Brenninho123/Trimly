@@ -87,6 +87,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.brenninho.trimly.design.TrimlyElevation
 import com.brenninho.trimly.i18n.AppStrings
 import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.model.ExportOptions
@@ -199,6 +200,7 @@ fun EditorMenu(
 
     Surface(
         color = MaterialTheme.colorScheme.surface,
+        tonalElevation = TrimlyElevation.high,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         modifier = modifier.fillMaxWidth()
     ) {
@@ -562,7 +564,7 @@ private fun ToolCard(
     val s = LocalStrings.current
     val source = remember { MutableInteractionSource() }
     var shown by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(18.dp)
+    val shape = MaterialTheme.shapes.large
 
     LaunchedEffect(Unit) {
         delay(index * 40L)
@@ -581,7 +583,7 @@ private fun ToolCard(
     )
     val fill by animateColorAsState(
         targetValue = if (spec.active) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+            MaterialTheme.colorScheme.primaryContainer
         } else {
             MaterialTheme.colorScheme.surfaceVariant
         },
@@ -594,7 +596,7 @@ private fun ToolCard(
         label = "toolOutline"
     )
     val tint by animateColorAsState(
-        targetValue = if (spec.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (spec.active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(250),
         label = "toolTint"
     )
@@ -622,7 +624,7 @@ private fun ToolCard(
                 translationY = (1f - progress) * 28f
             }
             .pressScale(source)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(MaterialTheme.shapes.medium)
             .clickable(
                 interactionSource = source,
                 indication = LocalIndication.current,

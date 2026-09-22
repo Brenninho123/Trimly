@@ -598,6 +598,7 @@ The property name has no dot on purpose. PowerShell splits arguments such as `-P
 | Preview | Still frames, with colors and rotation applied in Compose |
 | Export | H.264 video and AAC audio in MP4, progress and cancel |
 | Packaging | MSI/EXE on Windows, DMG on macOS, DEB on Linux |
+| Discord Rich Presence | Shows "Browsing videos" or "Editing \<file\>" in the desktop Discord client, when it is running |
 
 FFmpeg is located in this order:
 
@@ -609,6 +610,15 @@ FFmpeg is located in this order:
 Features on desktop: open a video, recent files, trim with a range slider, filters, effects, adjustments, rotate, flip, mute, resolution and export. Not available yet: playback inside the editor, undo and redo, merge, text, and the Android quality levels.
 
 The CI workflow downloads or installs FFmpeg per OS and bundles it. Distributing that binary requires following the FFmpeg license in addition to this project license.
+
+#### Discord Rich Presence
+
+`DiscordRpc` (desktop only) talks to the local Discord desktop client over its IPC socket: a named pipe (`\\.\pipe\discord-ipc-0` through `-9`) on Windows, a Unix domain socket (under `XDG_RUNTIME_DIR`, `TMPDIR`, `TMP`, `TEMP` or `/tmp`) on macOS and Linux. It uses the same Discord application ID as `DiscordAuth.CLIENT_ID` (the Android login), kept as its own constant since `desktop` does not depend on the Android `app` module.
+
+- On launch, it connects in the background and retries every 15 seconds until it succeeds; it never blocks the UI and never shows an error when Discord is not running.
+- The activity is set to "Browsing videos" on the home screen and "Editing \<file name\>" with an elapsed timer in the editor.
+- Closing the window closes the IPC connection, which clears the presence on the Discord side.
+- The large image asset key `trimly_logo` is sent but not bundled with the repository; upload it under **Rich Presence > Art Assets** for the same application in the Discord Developer Portal to show an icon, or leave it unset.
 
 ### iOS app (experimental)
 

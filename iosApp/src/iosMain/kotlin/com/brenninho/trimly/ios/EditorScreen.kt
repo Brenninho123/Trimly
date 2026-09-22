@@ -35,6 +35,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.brenninho.trimly.design.TrimlyElevation
+import com.brenninho.trimly.design.TrimlySpacing
 import kotlin.math.roundToInt
 
 @Composable
@@ -53,7 +55,7 @@ fun EditorScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(TrimlySpacing.m)
         ) {
             Text(
                 text = "Trim",
@@ -69,15 +71,18 @@ fun EditorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant,
+                modifier = Modifier.padding(vertical = TrimlySpacing.s)
+            )
 
             Text(
                 text = "Transform",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(Modifier.height(TrimlySpacing.xs))
+            Row(horizontalArrangement = Arrangement.spacedBy(TrimlySpacing.xs)) {
                 val rotated = controller.options.rotationDegrees % 360 != 0
                 FilterChip(
                     selected = rotated,
@@ -127,12 +132,12 @@ private fun EditorTopBar(
     controller: EditorController,
     onClose: () -> Unit
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface) {
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = TrimlyElevation.low) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = TrimlySpacing.s, vertical = TrimlySpacing.xs)
         ) {
             IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, contentDescription = "Close editor")
@@ -143,13 +148,21 @@ private fun EditorTopBar(
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(start = 8.dp)
+                modifier = Modifier.weight(1f).padding(start = TrimlySpacing.xs)
             )
-            OutlinedButton(onClick = controller::reset, enabled = controller.hasEdits) {
+            OutlinedButton(
+                onClick = controller::reset,
+                enabled = controller.hasEdits,
+                shape = MaterialTheme.shapes.small
+            ) {
                 Text("Reset")
             }
-            Spacer(Modifier.width(8.dp))
-            Button(onClick = controller::startExport, enabled = controller.canExport) {
+            Spacer(Modifier.width(TrimlySpacing.xs))
+            Button(
+                onClick = controller::startExport,
+                enabled = controller.canExport,
+                shape = MaterialTheme.shapes.small
+            ) {
                 Text("Export")
             }
         }

@@ -254,7 +254,7 @@ private fun FilterCard(
 ) {
     val s = LocalStrings.current
     val source = remember { MutableInteractionSource() }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = MaterialTheme.shapes.medium
     val primary = MaterialTheme.colorScheme.primary
     var shown by remember { mutableStateOf(false) }
 
