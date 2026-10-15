@@ -121,6 +121,7 @@ object Ffmpeg {
         onProgress: (Float) -> Unit
     ) {
         val lengthMs = (endMs - startMs).coerceAtLeast(1L)
+        val outputMs = options.outputMs(lengthMs).coerceAtLeast(1L)
         val command = ArrayList<String>()
         command += listOf(
             tools.ffmpeg, "-y", "-hide_banner",
@@ -132,7 +133,7 @@ object Ffmpeg {
             "-t", seconds(lengthMs)
         )
 
-        val chain = FilterChain.build(options)
+        val chain = videoChain(options, outputMs)
         if (chain.isNotEmpty()) command += listOf("-vf", chain)
 
         command += listOf("-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p")
@@ -140,6 +141,8 @@ object Ffmpeg {
         if (options.muted || !info.hasAudio) {
             command += "-an"
         } else {
+            val audio = audioChain(options, outputMs)
+            if (audio.isNotEmpty()) command += listOf("-af", audio)
             command += listOf("-c:a", "aac", "-b:a", "192k")
         }
 
@@ -152,7 +155,7 @@ object Ffmpeg {
                     val key = line.substringBefore('=', "")
                     if (key == "out_time_us" || key == "out_time_ms") {
                         line.substringAfter('=').trim().toLongOrNull()?.let { micros ->
-                            onProgress((micros / 1000f / lengthMs).coerceIn(0f, 1f))
+                            onProgress((micros / 1000f / outputMs).coerceIn(0f, 1f))
                         }
                     } else if (!progressLine.containsMatchIn(line)) {
                         tail.addLast(line)
@@ -170,6 +173,60 @@ object Ffmpeg {
             throw e
         }
     }
+
+    private fun videoChain(options: ExportOptions, outputMs: Long): String {
+        val parts = ArrayList<String>()
+        FilterChain.build(options).takeIf { it.isNotEmpty() }?.let { parts.add(it) }
+        if (options.hasSpeed) parts.add("setpts=PTS/${number(options.speed.toDouble())}")
+        if (options.fadeVideo) {
+            if (options.fadeInMs > 0L) parts.add("fade=t=in:st=0:d=${seconds(options.fadeInMs)}")
+            if (options.fadeOutMs > 0L) {
+                val start = (outputMs - options.fadeOutMs).coerceAtLeast(0L)
+                parts.add("fade=t=out:st=${seconds(start)}:d=${seconds(options.fadeOutMs)}")
+            }
+        }
+        return parts.joinToString(",")
+    }
+
+    private fun audioChain(options: ExportOptions, outputMs: Long): String {
+        val parts = ArrayList<String>()
+        if (options.hasSpeed) {
+            if (options.keepPitch) {
+                parts.addAll(tempoSteps(options.speed.toDouble()).map { "atempo=${number(it)}" })
+            } else {
+                val rate = (AUDIO_RATE * options.speed).toInt()
+                parts.add("aresample=$AUDIO_RATE")
+                parts.add("asetrate=$rate")
+                parts.add("aresample=$AUDIO_RATE")
+            }
+        }
+        if (options.hasVolume) parts.add("volume=${number(options.volume / 100.0)}")
+        if (options.fadeInMs > 0L) parts.add("afade=t=in:st=0:d=${seconds(options.fadeInMs)}")
+        if (options.fadeOutMs > 0L) {
+            val start = (outputMs - options.fadeOutMs).coerceAtLeast(0L)
+            parts.add("afade=t=out:st=${seconds(start)}:d=${seconds(options.fadeOutMs)}")
+        }
+        return parts.joinToString(",")
+    }
+
+    private fun tempoSteps(speed: Double): List<Double> {
+        val steps = ArrayList<Double>()
+        var remaining = speed
+        while (remaining > 2.0) {
+            steps.add(2.0)
+            remaining /= 2.0
+        }
+        while (remaining < 0.5) {
+            steps.add(0.5)
+            remaining /= 0.5
+        }
+        steps.add(remaining)
+        return steps
+    }
+
+    private fun number(value: Double): String = String.format(Locale.ROOT, "%.4f", value)
+
+    private const val AUDIO_RATE = 48000
 
     private suspend fun capture(command: List<String>): String =
         withProcess(command, merge = false) { process ->

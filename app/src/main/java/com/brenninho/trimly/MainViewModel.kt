@@ -176,13 +176,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun importFromLink(rawUrl: String) {
         if (_importState.value is ImportState.Downloading) return
-        _importState.value = ImportState.Downloading(null, 0L, null)
+        val url = rawUrl.trim()
+        val kind = VideoDownloader.inspect(url)?.kind
+        _importState.value = ImportState.Downloading(url = url, name = null, bytes = 0L, total = null, kind = kind)
         importJob = viewModelScope.launch {
             try {
-                val video = VideoDownloader.download(getApplication(), rawUrl) { progress ->
+                val video = VideoDownloader.download(getApplication(), url) { progress ->
                     _importState.update { current ->
                         if (current is ImportState.Downloading) {
-                            ImportState.Downloading(progress.name, progress.bytes, progress.total)
+                            current.copy(
+                                name = progress.name,
+                                bytes = progress.bytes,
+                                total = progress.total,
+                                stage = progress.stage,
+                                fraction = progress.fraction,
+                                bytesPerSecond = progress.bytesPerSecond
+                            )
                         } else {
                             current
                         }
@@ -194,9 +203,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _importState.value = ImportState.Idle
                 throw e
             } catch (e: DownloadException) {
-                _importState.value = ImportState.Failed(e.reason, e.message)
+                _importState.value = ImportState.Failed(url, e.reason, e.message)
             } catch (e: Exception) {
-                _importState.value = ImportState.Failed(DownloadFailure.NETWORK, e.message)
+                _importState.value = ImportState.Failed(url, DownloadFailure.NETWORK, e.message)
             }
         }
     }

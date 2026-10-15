@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -79,6 +80,7 @@ import androidx.compose.ui.window.FrameWindowScope
 import com.brenninho.trimly.model.Adjustment
 import com.brenninho.trimly.model.ColorMath
 import com.brenninho.trimly.model.FilterGroup
+import com.brenninho.trimly.model.SpeedPresets
 import com.brenninho.trimly.model.VideoFilter
 import java.awt.Frame
 import java.io.File
@@ -657,6 +659,33 @@ private fun EditPanel(controller: EditorController) {
 
         HorizontalDivider()
 
+        Text("Speed", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        Text(
+            text = "New length ${formatTime(options.outputMs(controller.trimmedMs))}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.horizontalScroll(rememberScrollState())
+        ) {
+            SpeedPresets.values.forEach { preset ->
+                FilterChip(
+                    selected = options.speed == preset,
+                    onClick = { controller.setSpeed(preset) },
+                    label = { Text(SpeedPresets.label(preset)) }
+                )
+            }
+        }
+        FilterChip(
+            selected = options.keepPitch,
+            onClick = { controller.setKeepPitch(!options.keepPitch) },
+            enabled = controller.info.hasAudio && !options.muted,
+            label = { Text("Keep voice pitch") }
+        )
+
+        HorizontalDivider()
+
         Text("Audio", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         FilterChip(
             selected = options.muted,
@@ -679,6 +708,44 @@ private fun EditPanel(controller: EditorController) {
                 )
             }
         )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "Volume",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(72.dp)
+            )
+            Slider(
+                value = options.volume.toFloat(),
+                onValueChange = { controller.setVolume((it / 5f).roundToInt() * 5) },
+                valueRange = 0f..200f,
+                enabled = controller.info.hasAudio && !options.muted,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "${options.volume}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.End,
+                modifier = Modifier.width(48.dp)
+            )
+        }
+        FadePicker("Fade in", options.fadeInMs, controller::setFadeIn)
+        FadePicker("Fade out", options.fadeOutMs, controller::setFadeOut)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = options.fadeVideo,
+                onClick = { controller.setFadeVideo(!options.fadeVideo) },
+                enabled = options.hasFade,
+                label = { Text("Fade picture too") }
+            )
+            TextButton(
+                onClick = controller::resetAudio,
+                enabled = options.hasVolume || options.hasFade || options.fadeVideo
+            ) {
+                Text("Reset audio")
+            }
+        }
 
         HorizontalDivider()
 
@@ -803,6 +870,25 @@ private fun FilterCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun FadePicker(label: String, value: Long, onChange: (Long) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.horizontalScroll(rememberScrollState())
+        ) {
+            SpeedPresets.fadeSteps.forEach { step ->
+                FilterChip(
+                    selected = value == step,
+                    onClick = { onChange(step) },
+                    label = { Text(if (step == 0L) "Off" else "${step / 1000.0} s") }
+                )
+            }
+        }
     }
 }
 

@@ -64,6 +64,9 @@ import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Gradient
+import androidx.compose.material.icons.filled.VerticalSplit
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -92,6 +95,7 @@ import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.model.ExportOptions
 import com.brenninho.trimly.model.ExportQuality
 import com.brenninho.trimly.model.FilterGroup
+import com.brenninho.trimly.model.SpeedPresets
 import com.brenninho.trimly.model.VideoFilter
 import kotlinx.coroutines.delay
 
@@ -145,8 +149,10 @@ private class MenuActions(
     val adjust: () -> Unit,
     val merge: () -> Unit,
     val text: () -> Unit,
-    val reset: () -> Unit,
-    val soon: (String) -> Unit
+    val speed: () -> Unit,
+    val audio: () -> Unit,
+    val split: () -> Unit,
+    val reset: () -> Unit
 )
 
 @Composable
@@ -168,8 +174,10 @@ fun EditorMenu(
     onAdjust: () -> Unit,
     onMerge: () -> Unit,
     onText: () -> Unit,
+    onSpeed: () -> Unit,
+    onAudio: () -> Unit,
+    onSplit: () -> Unit,
     onReset: () -> Unit,
-    onSoon: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val s = LocalStrings.current
@@ -185,8 +193,10 @@ fun EditorMenu(
         adjust = onAdjust,
         merge = onMerge,
         text = onText,
-        reset = onReset,
-        soon = onSoon
+        speed = onSpeed,
+        audio = onAudio,
+        split = onSplit,
+        reset = onReset
     )
     val tools = buildTools(s, options, segmentCount, hasEdits, actions)
     val activeCategories = tools.filter { it.active && !it.locked }.map { it.category }.toSet()
@@ -760,6 +770,13 @@ private fun buildTools(
             onClick = actions.flip
         ),
         ToolSpec(
+            id = "split",
+            category = MenuCategory.EDIT,
+            icon = Icons.Filled.VerticalSplit,
+            label = s.split,
+            onClick = actions.split
+        ),
+        ToolSpec(
             id = "merge",
             category = MenuCategory.EDIT,
             icon = Icons.Filled.Layers,
@@ -774,8 +791,9 @@ private fun buildTools(
             category = MenuCategory.EDIT,
             icon = Icons.Filled.Speed,
             label = s.toolSpeed,
-            soon = true,
-            onClick = { actions.soon(s.toolSpeed) }
+            status = if (options.hasSpeed) SpeedPresets.label(options.speed) else null,
+            active = options.hasSpeed,
+            onClick = actions.speed
         ),
         ToolSpec(
             id = "filters",
@@ -824,18 +842,19 @@ private fun buildTools(
         ToolSpec(
             id = "volume",
             category = MenuCategory.AUDIO,
-            icon = Icons.Filled.MusicNote,
+            icon = Icons.AutoMirrored.Filled.VolumeUp,
             label = s.volume,
-            soon = true,
-            onClick = { actions.soon(s.volume) }
+            status = if (options.hasVolume && !options.muted) "${options.volume}%" else null,
+            active = options.hasVolume && !options.muted,
+            onClick = actions.audio
         ),
         ToolSpec(
             id = "fade",
             category = MenuCategory.AUDIO,
-            icon = Icons.Filled.Tune,
+            icon = Icons.Filled.Gradient,
             label = s.fade,
-            soon = true,
-            onClick = { actions.soon(s.fade) }
+            active = options.hasFade,
+            onClick = actions.audio
         ),
         ToolSpec(
             id = "quality",
@@ -864,6 +883,9 @@ private fun countEdits(options: ExportOptions, segmentCount: Int): Int {
     if (options.rotationDegrees % 360 != 0) count += 1
     if (options.flipHorizontal) count += 1
     if (options.muted) count += 1
+    if (options.hasSpeed) count += 1
+    if (options.hasVolume && !options.muted) count += 1
+    if (options.hasFade) count += 1
     if (options.shortSide != null) count += 1
     if (options.quality != ExportQuality.STANDARD) count += 1
     count += options.texts.size

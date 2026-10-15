@@ -16,6 +16,7 @@ import com.brenninho.trimly.model.Adjustment
 import com.brenninho.trimly.model.Clip
 import com.brenninho.trimly.model.ExportOptions
 import com.brenninho.trimly.model.ExportQuality
+import com.brenninho.trimly.model.SpeedPresets
 import com.brenninho.trimly.model.TextItem
 import com.brenninho.trimly.model.VideoFilter
 import java.io.File
@@ -57,6 +58,12 @@ enum class EditorNotice {
     LIMIT
 }
 
+enum class SplitResult {
+    DONE,
+    TOO_CLOSE,
+    LIMIT
+}
+
 data class Segment(
     val id: Long,
     val clip: Clip
@@ -79,6 +86,9 @@ data class EditorState(
 
     val totalTrimmedMs: Long
         get() = segments.sumOf { it.clip.trimmedDurationMs }
+
+    val outputDurationMs: Long
+        get() = options.outputMs(totalTrimmedMs)
 
     val offsetBeforeSelectedMs: Long
         get() = segments.take(selected).sumOf { it.clip.trimmedDurationMs }
@@ -208,6 +218,41 @@ class EditorViewModel(
         if (index == 0) refreshSourceSize()
     }
 
+    fun splitAt(positionMs: Long): SplitResult {
+        val current = _state.value
+        if (current.segments.size >= MAX_SEGMENTS) return SplitResult.LIMIT
+        val index = current.selected.coerceIn(0, current.segments.lastIndex)
+        val segment = current.segments[index]
+        val clip = segment.clip
+        if (positionMs - clip.startMs < MIN_TRIM_MS || clip.endMs - positionMs < MIN_TRIM_MS) {
+            return SplitResult.TOO_CLOSE
+        }
+        record(snapshot(current))
+        coalesceKey = null
+        val head = segment.copy(clip = clip.withRange(clip.startMs, positionMs))
+        val tail = Segment(nextId++, clip.withRange(positionMs, clip.endMs))
+        val list = current.segments.toMutableList()
+        list[index] = head
+        list.add(index + 1, tail)
+        _state.update { it.copy(segments = list, selected = index + 1) }
+        return SplitResult.DONE
+    }
+
+    fun duplicateSegment(index: Int) {
+        val current = _state.value
+        if (index !in current.segments.indices) return
+        if (current.segments.size >= MAX_SEGMENTS) {
+            _state.update { it.copy(notice = EditorNotice.LIMIT) }
+            return
+        }
+        record(snapshot(current))
+        coalesceKey = null
+        val copy = Segment(nextId++, current.segments[index].clip)
+        val list = current.segments.toMutableList()
+        list.add(index + 1, copy)
+        _state.update { it.copy(segments = list, selected = index + 1) }
+    }
+
     fun moveSegment(from: Int, to: Int) {
         val current = _state.value
         if (from !in current.segments.indices || to !in current.segments.indices || from == to) return
@@ -262,6 +307,35 @@ class EditorViewModel(
 
     fun setFilterIntensity(value: Float) {
         updateOptions(key = "intensity") { it.copy(filterIntensity = value.coerceIn(0f, 1f)) }
+    }
+
+    fun setSpeed(value: Float) {
+        val speed = value.coerceIn(SpeedPresets.MIN, SpeedPresets.MAX)
+        updateOptions(key = "speed") { it.copy(speed = speed) }
+    }
+
+    fun setKeepPitch(enabled: Boolean) {
+        updateOptions { it.copy(keepPitch = enabled) }
+    }
+
+    fun setVolume(percent: Int) {
+        updateOptions(key = "volume") { it.copy(volume = percent.coerceIn(0, 200)) }
+    }
+
+    fun setFadeIn(ms: Long) {
+        updateOptions { it.copy(fadeInMs = ms.coerceAtLeast(0L)) }
+    }
+
+    fun setFadeOut(ms: Long) {
+        updateOptions { it.copy(fadeOutMs = ms.coerceAtLeast(0L)) }
+    }
+
+    fun setFadeVideo(enabled: Boolean) {
+        updateOptions { it.copy(fadeVideo = enabled) }
+    }
+
+    fun resetAudio() {
+        updateOptions { it.clearAudio() }
     }
 
     fun setAdjustment(kind: Adjustment, value: Int) {

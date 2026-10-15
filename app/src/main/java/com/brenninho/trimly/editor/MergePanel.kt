@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Movie
@@ -63,6 +64,7 @@ fun MergePanel(
     onRemove: (Int) -> Unit,
     onMove: (Int, Int) -> Unit,
     onAdd: () -> Unit,
+    onDuplicate: (Int) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -107,10 +109,12 @@ fun MergePanel(
                     segment = segment,
                     selected = index == selected,
                     canRemove = segments.size > 1 && enabled,
+                    canDuplicate = segments.size < MAX_SEGMENTS && enabled,
                     canMoveLeft = index > 0 && enabled,
                     canMoveRight = index < segments.lastIndex && enabled,
                     onSelect = { onSelect(index) },
                     onRemove = { onRemove(index) },
+                    onDuplicate = { onDuplicate(index) },
                     onLeft = { onMove(index, index - 1) },
                     onRight = { onMove(index, index + 1) },
                     modifier = Modifier.animateItem()
@@ -129,10 +133,12 @@ private fun SegmentCard(
     segment: Segment,
     selected: Boolean,
     canRemove: Boolean,
+    canDuplicate: Boolean,
     canMoveLeft: Boolean,
     canMoveRight: Boolean,
     onSelect: () -> Unit,
     onRemove: () -> Unit,
+    onDuplicate: () -> Unit,
     onLeft: () -> Unit,
     onRight: () -> Unit,
     modifier: Modifier = Modifier
@@ -220,6 +226,22 @@ private fun SegmentCard(
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.55f))
                         .clickable(onClick = onRemove)
+                        .padding(4.dp)
+                )
+            }
+
+            if (canDuplicate) {
+                Icon(
+                    imageVector = Icons.Filled.ContentCopy,
+                    contentDescription = s.duplicateClip,
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(4.dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .clickable(onClick = onDuplicate)
                         .padding(4.dp)
                 )
             }

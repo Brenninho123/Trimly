@@ -11,6 +11,8 @@ import android.os.SystemClock
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.DefaultEncoderFactory
@@ -66,8 +68,36 @@ private class Plan(
     val fastTrim: Boolean,
     val forceH264: Boolean,
     val estimatedBytes: Long,
-    val muted: Boolean
+    val muted: Boolean,
+    val audio: AudioPlan?
 )
+
+private class AudioPlan(
+    val speed: Float,
+    val keepPitch: Boolean,
+    val gain: Float,
+    val fadeInUs: Long,
+    val fadeOutUs: Long,
+    val segmentUs: List<Long>
+) {
+    fun processorsFor(index: Int): List<AudioProcessor> {
+        val list = ArrayList<AudioProcessor>()
+        if (speed != 1f) {
+            list.add(
+                SonicAudioProcessor().apply {
+                    setSpeed(speed)
+                    setPitch(if (keepPitch) 1f else speed)
+                }
+            )
+        }
+        val fadeIn = if (index == 0) fadeInUs else 0L
+        val fadeOut = if (index == segmentUs.lastIndex) fadeOutUs else 0L
+        if (gain != 1f || fadeIn > 0L || fadeOut > 0L) {
+            list.add(GainEnvelopeProcessor(gain, fadeIn, fadeOut, segmentUs.getOrElse(index) { 0L }))
+        }
+        return list
+    }
+}
 
 class VideoExporter(private val context: Context) {
 
@@ -218,10 +248,10 @@ class VideoExporter(private val context: Context) {
                 }
 
                 if (segments.size == 1) {
-                    transformer.start(editedItem(segments.first(), plan), output.absolutePath)
+                    transformer.start(editedItem(segments.first(), 0, plan), output.absolutePath)
                 } else {
                     val sequence = EditedMediaItemSequence.Builder()
-                    segments.forEach { sequence.addItem(editedItem(it, plan)) }
+                    segments.forEachIndexed { index, segment -> sequence.addItem(editedItem(segment, index, plan)) }
                     val composition = Composition.Builder(sequence.build())
                         .setEffects(Effects(emptyList(), plan.compositionEffects))
                         .build()
@@ -240,7 +270,7 @@ class VideoExporter(private val context: Context) {
         }
     }
 
-    private fun editedItem(segment: ExportSegment, plan: Plan): EditedMediaItem {
+    private fun editedItem(segment: ExportSegment, index: Int, plan: Plan): EditedMediaItem {
         val clipping = MediaItem.ClippingConfiguration.Builder()
             .setStartPositionMs(segment.startMs)
             .setEndPositionMs(segment.endMs)
@@ -253,7 +283,7 @@ class VideoExporter(private val context: Context) {
 
         return EditedMediaItem.Builder(mediaItem)
             .setRemoveAudio(plan.muted)
-            .setEffects(Effects(emptyList(), plan.itemEffects))
+            .setEffects(Effects(plan.audio?.processorsFor(index).orEmpty(), plan.itemEffects))
             .build()
     }
 
@@ -298,7 +328,15 @@ class VideoExporter(private val context: Context) {
         val outputHeight = evenAtLeast(options.targetHeight ?: displayHeight)
         val outputWidth = evenAtLeast((displayWidth.toLong() * outputHeight / displayHeight).toInt())
 
-        val overlay = TextOverlays.build(options.texts, outputHeight)
+        val overlay = TextOverlays.build(options.texts, outputHeight, options.speed)
+        val speed = options.speed.coerceIn(0.1f, 10f)
+        val segmentUs = segments.map { (it.durationMs * 1000.0 / speed).toLong() }
+        val totalUs = segmentUs.sum()
+        val fade = if (options.fadeVideo && options.hasFade) {
+            FadeMatrixEffect(options.fadeInMs * 1000L, options.fadeOutMs * 1000L, totalUs)
+        } else {
+            null
+        }
 
         val itemEffects = ArrayList<Effect>(baseEffects)
         val compositionEffects = ArrayList<Effect>()
@@ -307,13 +345,27 @@ class VideoExporter(private val context: Context) {
                 Presentation.createForWidthAndHeight(outputWidth, outputHeight, Presentation.LAYOUT_SCALE_TO_FIT)
             )
             if (overlay != null) compositionEffects.add(overlay)
-        } else if (overlay != null) {
-            itemEffects.add(overlay)
+            if (fade != null) compositionEffects.add(fade)
+        } else {
+            if (overlay != null) itemEffects.add(overlay)
+            if (fade != null) itemEffects.add(fade)
+        }
+
+        val audio = if (options.muted || (!options.hasSpeed && !options.hasVolume && !options.hasFade)) {
+            null
+        } else {
+            AudioPlan(
+                speed = speed,
+                keepPitch = options.keepPitch,
+                gain = options.gain,
+                fadeInUs = options.fadeInMs * 1000L,
+                fadeOutUs = options.fadeOutMs * 1000L,
+                segmentUs = segmentUs
+            )
         }
 
         val frameRate = (info.frameRate ?: 30f).coerceIn(15f, 60f)
-        val totalMs = segments.sumOf { it.durationMs }
-        val seconds = totalMs / 1000.0
+        val seconds = totalUs / 1_000_000.0
         val quality = options.quality
 
         val heuristic = (outputWidth.toDouble() * outputHeight * frameRate * BITS_PER_PIXEL * quality.bitrateFactor)
@@ -327,7 +379,7 @@ class VideoExporter(private val context: Context) {
         }
 
         val trimmed = segments.first().startMs > 0L || segments.first().endMs < info.durationMs
-        val fastTrim = !safe && !merged && itemEffects.isEmpty() && !options.muted && trimmed
+        val fastTrim = !safe && !merged && itemEffects.isEmpty() && audio == null && !options.muted && trimmed
         val estimateRate = if (fastTrim) (sourceBitrate ?: bitrate) else bitrate + AUDIO_BITRATE
         val estimatedBytes = (estimateRate * seconds / 8.0).toLong()
 
@@ -338,7 +390,8 @@ class VideoExporter(private val context: Context) {
             fastTrim = fastTrim,
             forceH264 = safe,
             estimatedBytes = estimatedBytes,
-            muted = options.muted
+            muted = options.muted,
+            audio = audio
         )
     }
 

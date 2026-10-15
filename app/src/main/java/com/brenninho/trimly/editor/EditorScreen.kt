@@ -93,6 +93,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
@@ -101,6 +102,7 @@ import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.model.Clip
 import com.brenninho.trimly.model.ColorMath
 import com.brenninho.trimly.model.ExportQuality
+import com.brenninho.trimly.model.SpeedPresets
 import com.brenninho.trimly.model.VideoFilter
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -158,10 +160,12 @@ fun EditorScreen(
     var menuExpanded by rememberSaveable { mutableStateOf(true) }
     var flashDirection by remember { mutableIntStateOf(0) }
     var flashTick by remember { mutableIntStateOf(0) }
+    var fadeLevel by remember { mutableFloatStateOf(1f) }
 
     val menuCategory = MenuCategory.entries[menuCategoryIndex.coerceIn(0, MenuCategory.entries.lastIndex)]
     val range by rememberUpdatedState(trimStart to trimEnd)
     val loopEnabled by rememberUpdatedState(looping)
+    val latestState by rememberUpdatedState(state)
     val layerPaint = remember { Paint() }
     val previewMatrix = remember(options) { ColorMath.combined(options) }
     val shownMatrix = if (compareHeld) null else previewMatrix
@@ -213,6 +217,7 @@ fun EditorScreen(
 
     LaunchedEffect(exoPlayer) {
         exoPlayer.seekTo(trimStart)
+        var appliedVolume = -1f
         while (true) {
             val current = exoPlayer.currentPosition
             positionMs = current
@@ -220,6 +225,21 @@ fun EditorScreen(
                 exoPlayer.seekTo(range.first)
                 if (!loopEnabled) exoPlayer.pause()
             }
+
+            val snapshot = latestState
+            val opts = snapshot.options
+            val envelope = if (opts.hasFade) {
+                val timeline = snapshot.offsetBeforeSelectedMs + snapshot.clip.relativePosition(current)
+                opts.envelopeAt(opts.outputMs(timeline), snapshot.outputDurationMs)
+            } else {
+                1f
+            }
+            val volume = (if (opts.muted) 0f else minOf(1f, opts.volume / 100f)) * envelope
+            if (volume != appliedVolume) {
+                exoPlayer.volume = volume
+                appliedVolume = volume
+            }
+            fadeLevel = if (opts.fadeVideo) envelope else 1f
             delay(33)
         }
     }
@@ -234,8 +254,9 @@ fun EditorScreen(
         exoPlayer.seekTo(state.clip.startMs)
     }
 
-    LaunchedEffect(exoPlayer, options.muted) {
-        exoPlayer.volume = if (options.muted) 0f else 1f
+    LaunchedEffect(exoPlayer, options.speed, options.keepPitch) {
+        val pitch = if (options.keepPitch) 1f else options.speed
+        exoPlayer.playbackParameters = PlaybackParameters(options.speed, pitch)
     }
 
     LaunchedEffect(panel) {
@@ -304,6 +325,17 @@ fun EditorScreen(
         announce(s.endSetTo(formatTime(viewModel.state.value.clip.endMs)))
     }
 
+    val splitHere: () -> Unit = {
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        exoPlayer.pause()
+        val position = exoPlayer.currentPosition
+        when (viewModel.splitAt(position)) {
+            SplitResult.DONE -> announce(s.splitDone(formatTime(state.clip.relativePosition(position))))
+            SplitResult.TOO_CLOSE -> announce(s.splitTooClose)
+            SplitResult.LIMIT -> announce(s.mergeLimit)
+        }
+    }
+
     val requestBack: () -> Unit = {
         if (!exporting) {
             if (state.hasEdits) showDiscard = true else onBack()
@@ -339,6 +371,17 @@ fun EditorScreen(
             }
             if (options.muted) {
                 add(EditChip("mute", s.muted) { viewModel.updateOptions { it.copy(muted = false) } })
+            }
+            if (options.hasSpeed) {
+                add(EditChip("speed", SpeedPresets.label(options.speed)) { viewModel.setSpeed(1f) })
+            }
+            if (options.hasVolume && !options.muted) {
+                add(EditChip("volume", s.chipVolume(options.volume)) { viewModel.setVolume(100) })
+            }
+            if (options.hasFade) {
+                add(EditChip("fade", s.fade) {
+                    viewModel.updateOptions { it.copy(fadeInMs = 0L, fadeOutMs = 0L, fadeVideo = false) }
+                })
             }
             options.shortSide?.let { side ->
                 add(EditChip("quality", "${side}p") { viewModel.setQuality(null) })
@@ -478,6 +521,13 @@ fun EditorScreen(
                                 }
                             )
                         }
+                )
+
+                Box(
+                    modifier = Modifier
+                        .size(footprintWidth.dp, footprintHeight.dp)
+                        .graphicsLayer { alpha = 1f - fadeLevel }
+                        .background(Color.Black)
                 )
 
                 TextPreviewLayer(
@@ -671,6 +721,37 @@ fun EditorScreen(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                                     )
                                 },
+                                onDuplicate = {
+                                    tick()
+                                    viewModel.duplicateSegment(it)
+                                },
+                                onClose = { panel = null }
+                            )
+
+                            PanelTab.SPEED -> SpeedPanel(
+                                options = options,
+                                sourceMs = state.totalTrimmedMs,
+                                enabled = !exporting,
+                                onSpeed = viewModel::setSpeed,
+                                onKeepPitch = viewModel::setKeepPitch,
+                                onClose = { panel = null }
+                            )
+
+                            PanelTab.AUDIO -> AudioPanel(
+                                options = options,
+                                outputMs = state.outputDurationMs,
+                                enabled = !exporting,
+                                onVolume = viewModel::setVolume,
+                                onFadeIn = {
+                                    tick()
+                                    viewModel.setFadeIn(it)
+                                },
+                                onFadeOut = {
+                                    tick()
+                                    viewModel.setFadeOut(it)
+                                },
+                                onFadeVideo = viewModel::setFadeVideo,
+                                onReset = viewModel::resetAudio,
                                 onClose = { panel = null }
                             )
 
@@ -724,11 +805,13 @@ fun EditorScreen(
                             onAdjust = { panel = PanelTab.ADJUST },
                             onMerge = { panel = PanelTab.MERGE },
                             onText = { panel = PanelTab.TEXT },
+                            onSpeed = { panel = PanelTab.SPEED },
+                            onAudio = { panel = PanelTab.AUDIO },
+                            onSplit = splitHere,
                             onReset = {
                                 viewModel.reset()
                                 exoPlayer.seekTo(0L)
-                            },
-                            onSoon = { announce(s.comingSoon(it)) }
+                            }
                         )
                     }
                 }

@@ -19,14 +19,14 @@ object TextOverlays {
 
     private val BACKGROUND = 0xAA000000.toInt()
 
-    fun build(items: List<TextItem>, frameHeight: Int): OverlayEffect? {
+    fun build(items: List<TextItem>, frameHeight: Int, speed: Float = 1f): OverlayEffect? {
         val usable = items.filter { it.text.isNotBlank() }
         if (usable.isEmpty()) return null
-        val overlays: List<TextureOverlay> = usable.map { overlay(it, frameHeight) }
+        val overlays: List<TextureOverlay> = usable.map { overlay(it, frameHeight, speed) }
         return OverlayEffect(ImmutableList.copyOf(overlays))
     }
 
-    private fun overlay(item: TextItem, frameHeight: Int): TextureOverlay {
+    private fun overlay(item: TextItem, frameHeight: Int, speed: Float): TextureOverlay {
         val sizePx = (frameHeight * item.sizeFraction).roundToInt().coerceAtLeast(12)
         val flags = Spanned.SPAN_INCLUSIVE_INCLUSIVE
         val text = SpannableString(item.text)
@@ -45,8 +45,9 @@ object TextOverlays {
             .setAlphaScale(0f)
             .build()
 
-        val startUs = item.startMs * 1000L
-        val endUs = item.endMs?.let { it * 1000L }
+        val rate = speed.toDouble().coerceAtLeast(0.01)
+        val startUs = (item.startMs * 1000L / rate).toLong()
+        val endUs = item.endMs?.let { (it * 1000L / rate).toLong() }
 
         return object : TextOverlay() {
             override fun getText(presentationTimeUs: Long): SpannableString = text

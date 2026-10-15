@@ -1,6 +1,8 @@
 package com.brenninho.trimly.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.brenninho.trimly.data.ImportStage
+import com.brenninho.trimly.data.LinkKind
 import com.brenninho.trimly.model.Adjustment
 import com.brenninho.trimly.model.VideoFilter
 import java.util.Locale
@@ -265,12 +267,40 @@ interface AppStrings {
     val linkErrInvalid: String
     val linkErrInsecure: String
     val linkErrNotVideo: String
-    val linkErrPlaylist: String
+    val linkErrStream: String
+    val linkErrLive: String
+    val linkErrNoVideoInPage: String
+    val linkRetry: String
     val linkErrTooLarge: String
     val linkErrNoSpace: String
     val linkErrNetwork: String
     fun linkProgress(done: String, total: String?): String
     fun linkErrHttp(code: String): String
+    fun linkErrSite(site: String): String
+    fun linkSpeed(speed: String): String
+    fun linkEta(time: String): String
+    fun linkStage(stage: ImportStage): String
+    fun linkKind(kind: LinkKind): String
+
+    val speedTitle: String
+    val speedKeepPitch: String
+    val speedKeepPitchHint: String
+    val speedPreviewNote: String
+    fun speedLength(time: String): String
+    val audioTitle: String
+    val fadeIn: String
+    val fadeOut: String
+    val fadeOff: String
+    val fadeVideo: String
+    val fadeVideoHint: String
+    val resetAudio: String
+    val volumeMutedHint: String
+    val volumeBoostHint: String
+    val duplicateClip: String
+    fun splitDone(time: String): String
+    val splitTooClose: String
+    fun chipVolume(percent: Int): String
+    fun fadeSeconds(seconds: String): String
 }
 
 object EnglishStrings : AppStrings {
@@ -542,21 +572,66 @@ object EnglishStrings : AppStrings {
     override fun menuEdits(count: Int) = (if (count == 1) "1 edit" else "$count edits")
     override val linkButton = "Link"
     override val linkTitle = "Import from link"
-    override val linkHint = "Paste a direct https link to a video file, such as one ending in .mp4."
-    override val linkNote = "Links to pages of video sites are not files and cannot be imported. Only import videos you have the right to use."
+    override val linkHint = "Paste a video file link, a Google Drive, Dropbox, OneDrive, GitHub or Imgur share link, a web page that shows a video, or an HLS (.m3u8) or DASH (.mpd) stream."
+    override val linkNote = "Platforms like YouTube, TikTok and Instagram don't offer video files and aren't supported. Only import videos you have the right to use."
     override val linkPlaceholder = "https://example.com/video.mp4"
     override val linkPaste = "Paste"
     override val linkImport = "Import"
     override val linkDownloading = "Downloading…"
     override val linkErrInvalid = "This is not a valid link"
     override val linkErrInsecure = "Only secure https links are supported"
-    override val linkErrNotVideo = "This link is a web page or another kind of file, not a video. Use a direct link to the video file."
-    override val linkErrPlaylist = "Streaming playlists (m3u8) are not supported"
-    override val linkErrTooLarge = "The file is larger than 2 GB"
+    override val linkErrNotVideo = "This link points to another kind of file, not a video."
+    override val linkErrStream = "This stream could not be converted to a video"
+    override val linkErrLive = "Live streams can't be imported. Use a recording that has an end."
+    override val linkErrNoVideoInPage = "No video was found on this page. Try the direct link to the video file."
+    override val linkRetry = "Try again"
+    override val linkErrTooLarge = "The file is larger than 4 GB"
     override val linkErrNoSpace = "Not enough free storage for this download"
     override val linkErrNetwork = "Could not download the video. Check your connection and the link"
     override fun linkProgress(done: String, total: String?) = (if (total != null) "$done of $total" else done)
     override fun linkErrHttp(code: String) = "The server answered with error $code"
+    override fun linkErrSite(site: String) = if (site.isBlank()) "This site isn't supported" else "$site links aren't supported"
+    override fun linkSpeed(speed: String) = "$speed/s"
+    override fun linkEta(time: String) = "$time left"
+    override fun linkStage(stage: ImportStage) = when (stage) {
+        ImportStage.CONNECTING -> "Connecting…"
+        ImportStage.RESOLVING -> "Looking for the video on the page…"
+        ImportStage.DOWNLOADING -> "Downloading…"
+        ImportStage.RETRYING -> "Connection dropped, resuming…"
+        ImportStage.CONVERTING -> "Converting stream to MP4…"
+    }
+    override fun linkKind(kind: LinkKind) = when (kind) {
+        LinkKind.DIRECT -> "Video file"
+        LinkKind.GOOGLE_DRIVE -> "Google Drive"
+        LinkKind.DROPBOX -> "Dropbox"
+        LinkKind.ONEDRIVE -> "OneDrive"
+        LinkKind.GITHUB -> "GitHub"
+        LinkKind.IMGUR -> "Imgur"
+        LinkKind.HLS -> "HLS stream, will be converted to MP4"
+        LinkKind.DASH -> "DASH stream, will be converted to MP4"
+        LinkKind.PAGE -> "Web page, Trimly will look for the video"
+        LinkKind.UNSUPPORTED -> "Not supported"
+    }
+
+    override val speedTitle = "Speed"
+    override val speedKeepPitch = "Keep voice pitch"
+    override val speedKeepPitchHint = "Off makes fast clips sound higher and slow clips deeper"
+    override val speedPreviewNote = "The preview plays at this speed"
+    override fun speedLength(time: String) = "New length $time"
+    override val audioTitle = "Audio"
+    override val fadeIn = "Fade in"
+    override val fadeOut = "Fade out"
+    override val fadeOff = "Off"
+    override val fadeVideo = "Fade picture too"
+    override val fadeVideoHint = "Fades from and to black along with the sound"
+    override val resetAudio = "Reset audio"
+    override val volumeMutedHint = "Sound is muted. Unmute to use volume."
+    override val volumeBoostHint = "Above 100% the preview stays at full volume. The export is boosted."
+    override val duplicateClip = "Duplicate clip"
+    override fun splitDone(time: String) = "Clip split at $time"
+    override val splitTooClose = "Move the playhead away from the clip edges to split"
+    override fun chipVolume(percent: Int) = "Volume $percent%"
+    override fun fadeSeconds(seconds: String) = "$seconds s"
 }
 
 object PortugueseStrings : AppStrings {
@@ -828,21 +903,66 @@ object PortugueseStrings : AppStrings {
     override fun menuEdits(count: Int) = (if (count == 1) "1 edição" else "$count edições")
     override val linkButton = "Link"
     override val linkTitle = "Importar de um link"
-    override val linkHint = "Cole um link https direto para um arquivo de vídeo, como um que termina em .mp4."
-    override val linkNote = "Links de páginas de sites de vídeo não são arquivos e não podem ser importados. Importe apenas vídeos que você tem direito de usar."
+    override val linkHint = "Cole o link de um arquivo de vídeo, um link de compartilhamento do Google Drive, Dropbox, OneDrive, GitHub ou Imgur, uma página que mostra um vídeo, ou um stream HLS (.m3u8) ou DASH (.mpd)."
+    override val linkNote = "Plataformas como YouTube, TikTok e Instagram não oferecem arquivos de vídeo e não são suportadas. Importe apenas vídeos que você tem direito de usar."
     override val linkPlaceholder = "https://exemplo.com/video.mp4"
     override val linkPaste = "Colar"
     override val linkImport = "Importar"
     override val linkDownloading = "Baixando…"
     override val linkErrInvalid = "Este não é um link válido"
     override val linkErrInsecure = "Apenas links seguros https são suportados"
-    override val linkErrNotVideo = "Este link é uma página da web ou outro tipo de arquivo, não um vídeo. Use um link direto para o arquivo de vídeo."
-    override val linkErrPlaylist = "Playlists de streaming (m3u8) não são suportadas"
-    override val linkErrTooLarge = "O arquivo tem mais de 2 GB"
+    override val linkErrNotVideo = "Este link aponta para outro tipo de arquivo, não um vídeo."
+    override val linkErrStream = "Não foi possível converter este stream em vídeo"
+    override val linkErrLive = "Transmissões ao vivo não podem ser importadas. Use uma gravação que tenha fim."
+    override val linkErrNoVideoInPage = "Nenhum vídeo foi encontrado nesta página. Tente o link direto do arquivo de vídeo."
+    override val linkRetry = "Tentar de novo"
+    override val linkErrTooLarge = "O arquivo tem mais de 4 GB"
     override val linkErrNoSpace = "Espaço livre insuficiente para este download"
     override val linkErrNetwork = "Não foi possível baixar o vídeo. Verifique sua conexão e o link"
     override fun linkProgress(done: String, total: String?) = (if (total != null) "$done de $total" else done)
     override fun linkErrHttp(code: String) = "O servidor respondeu com o erro $code"
+    override fun linkErrSite(site: String) = if (site.isBlank()) "Este site não é suportado" else "Links do $site não são suportados"
+    override fun linkSpeed(speed: String) = "$speed/s"
+    override fun linkEta(time: String) = "faltam $time"
+    override fun linkStage(stage: ImportStage) = when (stage) {
+        ImportStage.CONNECTING -> "Conectando…"
+        ImportStage.RESOLVING -> "Procurando o vídeo na página…"
+        ImportStage.DOWNLOADING -> "Baixando…"
+        ImportStage.RETRYING -> "A conexão caiu, retomando…"
+        ImportStage.CONVERTING -> "Convertendo o stream para MP4…"
+    }
+    override fun linkKind(kind: LinkKind) = when (kind) {
+        LinkKind.DIRECT -> "Arquivo de vídeo"
+        LinkKind.GOOGLE_DRIVE -> "Google Drive"
+        LinkKind.DROPBOX -> "Dropbox"
+        LinkKind.ONEDRIVE -> "OneDrive"
+        LinkKind.GITHUB -> "GitHub"
+        LinkKind.IMGUR -> "Imgur"
+        LinkKind.HLS -> "Stream HLS, será convertido para MP4"
+        LinkKind.DASH -> "Stream DASH, será convertido para MP4"
+        LinkKind.PAGE -> "Página da web, o Trimly vai procurar o vídeo"
+        LinkKind.UNSUPPORTED -> "Não suportado"
+    }
+
+    override val speedTitle = "Velocidade"
+    override val speedKeepPitch = "Manter o tom da voz"
+    override val speedKeepPitchHint = "Desligado, clipes rápidos ficam mais agudos e lentos mais graves"
+    override val speedPreviewNote = "A prévia toca nesta velocidade"
+    override fun speedLength(time: String) = "Nova duração $time"
+    override val audioTitle = "Áudio"
+    override val fadeIn = "Entrada suave"
+    override val fadeOut = "Saída suave"
+    override val fadeOff = "Desligado"
+    override val fadeVideo = "Esmaecer a imagem também"
+    override val fadeVideoHint = "Escurece até o preto junto com o som"
+    override val resetAudio = "Redefinir áudio"
+    override val volumeMutedHint = "O som está silenciado. Ative o som para usar o volume."
+    override val volumeBoostHint = "Acima de 100% a prévia fica no volume máximo. A exportação sai amplificada."
+    override val duplicateClip = "Duplicar clipe"
+    override fun splitDone(time: String) = "Clipe dividido em $time"
+    override val splitTooClose = "Afaste o cursor das bordas do clipe para dividir"
+    override fun chipVolume(percent: Int) = "Volume $percent%"
+    override fun fadeSeconds(seconds: String) = "$seconds s"
 }
 
 object SpanishStrings : AppStrings {
@@ -1114,21 +1234,66 @@ object SpanishStrings : AppStrings {
     override fun menuEdits(count: Int) = (if (count == 1) "1 edición" else "$count ediciones")
     override val linkButton = "Enlace"
     override val linkTitle = "Importar desde un enlace"
-    override val linkHint = "Pega un enlace https directo a un archivo de video, como uno que termine en .mp4."
-    override val linkNote = "Los enlaces a páginas de sitios de video no son archivos y no se pueden importar. Importa solo videos que tengas derecho a usar."
+    override val linkHint = "Pega el enlace de un archivo de video, un enlace compartido de Google Drive, Dropbox, OneDrive, GitHub o Imgur, una página que muestre un video, o un stream HLS (.m3u8) o DASH (.mpd)."
+    override val linkNote = "Plataformas como YouTube, TikTok e Instagram no ofrecen archivos de video y no son compatibles. Importa solo videos que tengas derecho a usar."
     override val linkPlaceholder = "https://ejemplo.com/video.mp4"
     override val linkPaste = "Pegar"
     override val linkImport = "Importar"
     override val linkDownloading = "Descargando…"
     override val linkErrInvalid = "Este no es un enlace válido"
     override val linkErrInsecure = "Solo se admiten enlaces seguros https"
-    override val linkErrNotVideo = "Este enlace es una página web u otro tipo de archivo, no un video. Usa un enlace directo al archivo de video."
-    override val linkErrPlaylist = "Las listas de streaming (m3u8) no son compatibles"
-    override val linkErrTooLarge = "El archivo supera los 2 GB"
+    override val linkErrNotVideo = "Este enlace apunta a otro tipo de archivo, no a un video."
+    override val linkErrStream = "No se pudo convertir este stream en video"
+    override val linkErrLive = "Las transmisiones en vivo no se pueden importar. Usa una grabación que tenga final."
+    override val linkErrNoVideoInPage = "No se encontró ningún video en esta página. Prueba el enlace directo al archivo."
+    override val linkRetry = "Reintentar"
+    override val linkErrTooLarge = "El archivo supera los 4 GB"
     override val linkErrNoSpace = "No hay suficiente espacio libre para esta descarga"
     override val linkErrNetwork = "No se pudo descargar el video. Revisa tu conexión y el enlace"
     override fun linkProgress(done: String, total: String?) = (if (total != null) "$done de $total" else done)
     override fun linkErrHttp(code: String) = "El servidor respondió con el error $code"
+    override fun linkErrSite(site: String) = if (site.isBlank()) "Este sitio no es compatible" else "Los enlaces de $site no son compatibles"
+    override fun linkSpeed(speed: String) = "$speed/s"
+    override fun linkEta(time: String) = "quedan $time"
+    override fun linkStage(stage: ImportStage) = when (stage) {
+        ImportStage.CONNECTING -> "Conectando…"
+        ImportStage.RESOLVING -> "Buscando el video en la página…"
+        ImportStage.DOWNLOADING -> "Descargando…"
+        ImportStage.RETRYING -> "Se cortó la conexión, reanudando…"
+        ImportStage.CONVERTING -> "Convirtiendo el stream a MP4…"
+    }
+    override fun linkKind(kind: LinkKind) = when (kind) {
+        LinkKind.DIRECT -> "Archivo de video"
+        LinkKind.GOOGLE_DRIVE -> "Google Drive"
+        LinkKind.DROPBOX -> "Dropbox"
+        LinkKind.ONEDRIVE -> "OneDrive"
+        LinkKind.GITHUB -> "GitHub"
+        LinkKind.IMGUR -> "Imgur"
+        LinkKind.HLS -> "Stream HLS, se convertirá a MP4"
+        LinkKind.DASH -> "Stream DASH, se convertirá a MP4"
+        LinkKind.PAGE -> "Página web, Trimly buscará el video"
+        LinkKind.UNSUPPORTED -> "No compatible"
+    }
+
+    override val speedTitle = "Velocidad"
+    override val speedKeepPitch = "Mantener el tono de voz"
+    override val speedKeepPitchHint = "Desactivado, los clips rápidos suenan más agudos y los lentos más graves"
+    override val speedPreviewNote = "La vista previa se reproduce a esta velocidad"
+    override fun speedLength(time: String) = "Nueva duración $time"
+    override val audioTitle = "Audio"
+    override val fadeIn = "Entrada gradual"
+    override val fadeOut = "Salida gradual"
+    override val fadeOff = "Desactivado"
+    override val fadeVideo = "Fundir también la imagen"
+    override val fadeVideoHint = "Funde a negro junto con el sonido"
+    override val resetAudio = "Restablecer audio"
+    override val volumeMutedHint = "El sonido está silenciado. Actívalo para usar el volumen."
+    override val volumeBoostHint = "Por encima del 100% la vista previa queda al máximo. La exportación sale amplificada."
+    override val duplicateClip = "Duplicar clip"
+    override fun splitDone(time: String) = "Clip dividido en $time"
+    override val splitTooClose = "Aleja el cursor de los bordes del clip para dividir"
+    override fun chipVolume(percent: Int) = "Volumen $percent%"
+    override fun fadeSeconds(seconds: String) = "$seconds s"
 }
 
 fun stringsFor(language: AppLanguage): AppStrings {

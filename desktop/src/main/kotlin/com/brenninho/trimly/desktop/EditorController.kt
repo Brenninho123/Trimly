@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import com.brenninho.trimly.model.Adjustment
 import com.brenninho.trimly.model.ExportOptions
+import com.brenninho.trimly.model.SpeedPresets
 import com.brenninho.trimly.model.VideoFilter
 import java.io.File
 import kotlin.math.min
@@ -128,6 +129,34 @@ class EditorController(
 
     fun toggleMute() {
         options = options.copy(muted = !options.muted)
+    }
+
+    fun setSpeed(value: Float) {
+        options = options.copy(speed = value.coerceIn(SpeedPresets.MIN, SpeedPresets.MAX))
+    }
+
+    fun setKeepPitch(enabled: Boolean) {
+        options = options.copy(keepPitch = enabled)
+    }
+
+    fun setVolume(percent: Int) {
+        options = options.copy(volume = percent.coerceIn(0, 200))
+    }
+
+    fun setFadeIn(ms: Long) {
+        options = options.copy(fadeInMs = ms.coerceAtLeast(0L))
+    }
+
+    fun setFadeOut(ms: Long) {
+        options = options.copy(fadeOutMs = ms.coerceAtLeast(0L))
+    }
+
+    fun setFadeVideo(enabled: Boolean) {
+        options = options.copy(fadeVideo = enabled)
+    }
+
+    fun resetAudio() {
+        options = options.clearAudio()
     }
 
     fun setQuality(shortSide: Int?) {

@@ -19,8 +19,45 @@ data class ExportOptions(
     val saturation: Int = 0,
     val warmth: Int = 0,
     val quality: ExportQuality = ExportQuality.STANDARD,
-    val texts: List<TextItem> = emptyList()
+    val texts: List<TextItem> = emptyList(),
+    val speed: Float = 1f,
+    val keepPitch: Boolean = true,
+    val volume: Int = 100,
+    val fadeInMs: Long = 0L,
+    val fadeOutMs: Long = 0L,
+    val fadeVideo: Boolean = false
 ) {
+    val hasSpeed: Boolean
+        get() = speed != 1f
+
+    val hasVolume: Boolean
+        get() = volume != 100
+
+    val hasFade: Boolean
+        get() = fadeInMs > 0L || fadeOutMs > 0L
+
+    val hasAudioProcessing: Boolean
+        get() = !muted && (hasSpeed || hasVolume || hasFade)
+
+    val gain: Float
+        get() = if (muted) 0f else volume / 100f
+
+    fun outputMs(sourceMs: Long): Long = (sourceMs / speed.toDouble()).toLong()
+
+    fun envelopeAt(timeMs: Long, totalMs: Long): Float {
+        var factor = 1f
+        if (fadeInMs > 0L && timeMs < fadeInMs) {
+            factor = minOf(factor, (timeMs.toFloat() / fadeInMs).coerceIn(0f, 1f))
+        }
+        val remaining = totalMs - timeMs
+        if (fadeOutMs > 0L && remaining < fadeOutMs) {
+            factor = minOf(factor, (remaining.toFloat() / fadeOutMs).coerceIn(0f, 1f))
+        }
+        return factor
+    }
+
+    fun clearAudio(): ExportOptions = copy(volume = 100, fadeInMs = 0L, fadeOutMs = 0L, fadeVideo = false)
+
     val hasVideoTransform: Boolean
         get() = rotationDegrees % 360 != 0 || flipHorizontal
 
