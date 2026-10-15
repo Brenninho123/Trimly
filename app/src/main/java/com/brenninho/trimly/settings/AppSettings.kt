@@ -20,6 +20,18 @@ class AppSettings(context: Context) {
             prefs.edit().putBoolean("tips_enabled", value).apply()
         }
 
+    var theme: ThemeMode
+        get() = ThemeMode.fromCode(prefs.getString("theme", null))
+        set(value) {
+            prefs.edit().putString("theme", value.code).apply()
+        }
+
+    var accent: AccentColor
+        get() = AccentColor.fromCode(prefs.getString("accent", null))
+        set(value) {
+            prefs.edit().putString("accent", value.code).apply()
+        }
+
     var pendingState: String?
         get() = prefs.getString("pending_state", null)
         set(value) {

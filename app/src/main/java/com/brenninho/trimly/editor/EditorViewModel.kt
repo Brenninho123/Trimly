@@ -12,7 +12,12 @@ import com.brenninho.trimly.engine.ExportFailure
 import com.brenninho.trimly.engine.ExportSegment
 import com.brenninho.trimly.engine.MediaSaver
 import com.brenninho.trimly.engine.VideoExporter
+import android.provider.OpenableColumns
+import com.brenninho.trimly.engine.FrameSaver
 import com.brenninho.trimly.model.Adjustment
+import com.brenninho.trimly.model.AspectRatio
+import com.brenninho.trimly.model.Datamosh
+import com.brenninho.trimly.model.MusicTrack
 import com.brenninho.trimly.model.Clip
 import com.brenninho.trimly.model.ExportOptions
 import com.brenninho.trimly.model.ExportQuality
@@ -55,7 +60,10 @@ sealed interface ExportStatus {
 
 enum class EditorNotice {
     ADD_FAILED,
-    LIMIT
+    LIMIT,
+    MUSIC_FAILED,
+    SNAPSHOT_SAVED,
+    SNAPSHOT_FAILED
 }
 
 enum class SplitResult {
@@ -101,9 +109,18 @@ data class EditorState(
             segments.all { it.clip.trimmedDurationMs > 0L } &&
             export !is ExportStatus.Running
 
+    val outputSize: Pair<Int, Int>
+        get() {
+            val turned = options.rotationDegrees % 180 != 0
+            val width = if (turned) sourceHeight else sourceWidth
+            val height = if (turned) sourceWidth else sourceHeight
+            return options.aspect.crop(width, height)
+        }
+
     val availableShortSides: List<Int>
         get() {
-            val shortSide = min(sourceWidth, sourceHeight)
+            val (width, height) = outputSize
+            val shortSide = min(width, height)
             return if (shortSide <= 0) emptyList() else listOf(1080, 720, 480).filter { it < shortSide }
         }
 }
@@ -338,6 +355,81 @@ class EditorViewModel(
         updateOptions { it.clearAudio() }
     }
 
+    fun setAspect(aspect: AspectRatio) {
+        updateOptions { it.copy(aspect = aspect) }
+    }
+
+    fun setMusic(uri: Uri) {
+        viewModelScope.launch {
+            val track = withContext(Dispatchers.IO) {
+                keepAccess(uri)
+                readMusic(uri)
+            }
+            if (track == null) {
+                _state.update { it.copy(notice = EditorNotice.MUSIC_FAILED) }
+                return@launch
+            }
+            val previous = _state.value.options.music
+            updateOptions {
+                it.copy(
+                    music = track.copy(
+                        volume = previous?.volume ?: track.volume,
+                        loop = previous?.loop ?: track.loop
+                    )
+                )
+            }
+        }
+    }
+
+    fun removeMusic() {
+        updateOptions { it.copy(music = null) }
+    }
+
+    fun setMusicVolume(percent: Int) {
+        updateOptions(key = "music_volume") { options ->
+            options.copy(music = options.music?.copy(volume = percent.coerceIn(0, 200)))
+        }
+    }
+
+    fun setMusicLoop(loop: Boolean) {
+        updateOptions { options -> options.copy(music = options.music?.copy(loop = loop)) }
+    }
+
+    fun setMusicOffset(ms: Long) {
+        updateOptions(key = "music_offset") { options ->
+            val music = options.music ?: return@updateOptions options
+            options.copy(music = music.copy(startOffsetMs = ms.coerceIn(0L, (music.durationMs - 1000L).coerceAtLeast(0L))))
+        }
+    }
+
+    fun setDatamosh(enabled: Boolean) {
+        updateOptions { it.copy(datamosh = if (enabled) it.datamosh ?: Datamosh() else null) }
+    }
+
+    fun updateDatamosh(key: String? = null, transform: (Datamosh) -> Datamosh) {
+        updateOptions(key = key) { options ->
+            val current = options.datamosh ?: return@updateOptions options
+            options.copy(datamosh = transform(current))
+        }
+    }
+
+    fun saveSnapshot(positionMs: Long) {
+        val current = _state.value
+        val clip = current.clip
+        val timeline = current.offsetBeforeSelectedMs + clip.relativePosition(positionMs)
+        viewModelScope.launch {
+            val notice = try {
+                FrameSaver.save(app, clip.uri, positionMs, timeline, current.options)
+                EditorNotice.SNAPSHOT_SAVED
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                EditorNotice.SNAPSHOT_FAILED
+            }
+            _state.update { it.copy(notice = notice) }
+        }
+    }
+
     fun setAdjustment(kind: Adjustment, value: Int) {
         updateOptions(key = "adjust_${kind.name}") { it.withAdjustment(kind, value.coerceIn(-100, 100)) }
     }
@@ -497,9 +589,7 @@ class EditorViewModel(
 
     private fun resolveOptions(state: EditorState): ExportOptions {
         val shortSide = state.options.shortSide ?: return state.options.copy(targetHeight = null)
-        val turned = state.options.rotationDegrees % 180 != 0
-        val width = if (turned) state.sourceHeight else state.sourceWidth
-        val height = if (turned) state.sourceWidth else state.sourceHeight
+        val (width, height) = state.outputSize
         if (width <= 0 || height <= 0) return state.options.copy(targetHeight = null)
         val target = if (width >= height) shortSide else (shortSide.toLong() * height / width).toInt()
         return state.options.copy(targetHeight = target - target % 2)
@@ -537,6 +627,36 @@ class EditorViewModel(
         } finally {
             retriever.release()
         }
+    }
+
+    private fun readMusic(uri: Uri): MusicTrack? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(app, uri)
+            val hasAudio = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
+            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+            if (!hasAudio || duration == null || duration <= 0L) {
+                null
+            } else {
+                val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                MusicTrack(uri = uri.toString(), name = title?.takeIf { it.isNotBlank() } ?: displayName(uri), durationMs = duration)
+            }
+        } catch (e: Exception) {
+            null
+        } finally {
+            retriever.release()
+        }
+    }
+
+    private fun displayName(uri: Uri): String {
+        val name = try {
+            app.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+        return (name ?: uri.lastPathSegment ?: "Music").substringBeforeLast('.')
     }
 
     private fun readSize(uri: Uri): Pair<Int, Int>? {

@@ -79,7 +79,10 @@ enum class PanelTab {
     TEXT,
     MERGE,
     SPEED,
-    AUDIO;
+    AUDIO,
+    ASPECT,
+    MUSIC,
+    MOSH;
 
     val isStyle: Boolean
         get() = this == FILTERS || this == EFFECTS || this == ADJUST
@@ -92,6 +95,9 @@ enum class PanelTab {
         MERGE -> s.toolMerge
         SPEED -> s.speedTitle
         AUDIO -> s.audioTitle
+        ASPECT -> s.aspectTitle
+        MUSIC -> s.musicTitle
+        MOSH -> s.moshTitle
     }
 }
 
@@ -164,7 +170,7 @@ fun StylePanel(
                     onReset = onResetAdjust
                 )
 
-                PanelTab.TEXT, PanelTab.MERGE, PanelTab.SPEED, PanelTab.AUDIO -> Unit
+                else -> Unit
             }
         }
     }

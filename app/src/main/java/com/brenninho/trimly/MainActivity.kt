@@ -25,9 +25,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.core.content.pm.ShortcutInfoCompat
@@ -47,6 +49,7 @@ import com.brenninho.trimly.settings.LoginError
 import com.brenninho.trimly.settings.SettingsActions
 import com.brenninho.trimly.ui.TrimlyApp
 import com.brenninho.trimly.ui.theme.TrimlyTheme
+import com.brenninho.trimly.ui.theme.isDarkTheme
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -93,7 +96,21 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            TrimlyTheme {
+            val themeSettings by viewModel.settingsState.collectAsStateWithLifecycle()
+            val dark = isDarkTheme(themeSettings.theme)
+            LaunchedEffect(dark) {
+                val style = if (dark) {
+                    SystemBarStyle.dark(Color.TRANSPARENT)
+                } else {
+                    SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                }
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            }
+            TrimlyTheme(mode = themeSettings.theme, accent = themeSettings.accent) {
+                val windowColor = MaterialTheme.colorScheme.background
+                LaunchedEffect(windowColor) {
+                    window.setBackgroundDrawable(ColorDrawable(windowColor.toArgb()))
+                }
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -110,6 +127,8 @@ class MainActivity : ComponentActivity() {
                         SettingsActions(
                             onLanguage = viewModel::setLanguage,
                             onTips = viewModel::setTipsEnabled,
+                            onTheme = viewModel::setTheme,
+                            onAccent = viewModel::setAccent,
                             onLogin = ::startDiscordLogin,
                             onCancelLogin = viewModel::cancelLogin,
                             onLogout = viewModel::logout

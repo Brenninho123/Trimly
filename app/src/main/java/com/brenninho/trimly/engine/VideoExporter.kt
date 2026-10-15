@@ -44,6 +44,7 @@ private const val STALL_MS = 90_000L
 private const val POLL_MS = 250L
 private const val SPACE_MARGIN_NUMERATOR = 16L
 private const val SPACE_MARGIN_DENOMINATOR = 10L
+private const val MOSH_SHARE = 0.85f
 
 class ExportSegment(
     val uri: Uri,
@@ -61,26 +62,12 @@ private data class SourceInfo(
     val durationMs: Long
 )
 
-private class Plan(
-    val itemEffects: List<Effect>,
-    val compositionEffects: List<Effect>,
-    val bitrate: Int?,
-    val fastTrim: Boolean,
-    val forceH264: Boolean,
-    val estimatedBytes: Long,
-    val muted: Boolean,
-    val audio: AudioPlan?
-)
-
-private class AudioPlan(
+private class ItemAudio(
     val speed: Float,
     val keepPitch: Boolean,
-    val gain: Float,
-    val fadeInUs: Long,
-    val fadeOutUs: Long,
-    val segmentUs: List<Long>
+    val gain: Float
 ) {
-    fun processorsFor(index: Int): List<AudioProcessor> {
+    fun processors(): List<AudioProcessor> {
         val list = ArrayList<AudioProcessor>()
         if (speed != 1f) {
             list.add(
@@ -90,13 +77,42 @@ private class AudioPlan(
                 }
             )
         }
-        val fadeIn = if (index == 0) fadeInUs else 0L
-        val fadeOut = if (index == segmentUs.lastIndex) fadeOutUs else 0L
-        if (gain != 1f || fadeIn > 0L || fadeOut > 0L) {
-            list.add(GainEnvelopeProcessor(gain, fadeIn, fadeOut, segmentUs.getOrElse(index) { 0L }))
-        }
+        if (gain != 1f) list.add(GainEnvelopeProcessor(gain, 0L, 0L, 0L))
         return list
     }
+}
+
+private class MusicPlan(
+    val uri: Uri,
+    val gain: Float,
+    val loop: Boolean,
+    val startMs: Long,
+    val endMs: Long?
+)
+
+private class Plan(
+    val itemEffects: List<Effect>,
+    val compositionEffects: List<Effect>,
+    val bitrate: Int?,
+    val keyframeSeconds: Float?,
+    val fastTrim: Boolean,
+    val forceH264: Boolean,
+    val estimatedBytes: Long,
+    val muted: Boolean,
+    val itemAudio: ItemAudio?,
+    val fadeInUs: Long,
+    val fadeOutUs: Long,
+    val totalUs: Long,
+    val music: MusicPlan?,
+    val forceAudioTrack: Boolean,
+    val mosh: MoshPlan?
+) {
+    fun compositionAudio(): List<AudioProcessor> =
+        if (fadeInUs > 0L || fadeOutUs > 0L) {
+            listOf(GainEnvelopeProcessor(1f, fadeInUs, fadeOutUs, totalUs))
+        } else {
+            emptyList()
+        }
 }
 
 class VideoExporter(private val context: Context) {
@@ -149,23 +165,20 @@ class VideoExporter(private val context: Context) {
 
         var attempt = 1
         var plan = buildPlan(options, first, segments, safe = false)
-        checkSpace(output, plan.estimatedBytes)
+        checkSpace(output, plan.estimatedBytes * if (plan.mosh != null) 2L else 1L)
+
+        val stage = if (plan.mosh != null) File(output.parentFile, output.nameWithoutExtension + "_raw.mp4") else output
+        val share = if (plan.mosh != null) MOSH_SHARE else 1f
 
         while (true) {
             try {
-                runAttempt(segments, plan, output, startedAt, onProgress)
-                return ExportOutcome(
-                    file = output,
-                    sizeBytes = output.length(),
-                    elapsedMs = SystemClock.elapsedRealtime() - startedAt,
-                    attempts = attempt,
-                    fastTrim = plan.fastTrim
-                )
+                runAttempt(segments, plan, stage, startedAt, share, onProgress)
+                break
             } catch (e: CancellationException) {
-                output.delete()
+                stage.delete()
                 throw e
             } catch (e: Exception) {
-                output.delete()
+                stage.delete()
                 val failure = classify(e)
                 val canRetry = attempt == 1 && failure in RETRYABLE
                 if (!canRetry) {
@@ -175,6 +188,34 @@ class VideoExporter(private val context: Context) {
                 plan = buildPlan(options, first, segments, safe = true)
             }
         }
+
+        val mosh = plan.mosh
+        if (mosh != null) {
+            try {
+                Datamosher.process(stage, output, mosh) { fraction ->
+                    val total = share + (1f - share) * fraction
+                    val elapsed = SystemClock.elapsedRealtime() - startedAt
+                    onProgress(ExportProgress(total, elapsed, null))
+                }
+            } catch (e: CancellationException) {
+                output.delete()
+                throw e
+            } catch (e: Exception) {
+                output.delete()
+                throw ExportFailedException(ExportFailure.OTHER, e.message, e)
+            } finally {
+                stage.delete()
+            }
+        }
+
+        onProgress(ExportProgress(1f, SystemClock.elapsedRealtime() - startedAt, 0L))
+        return ExportOutcome(
+            file = output,
+            sizeBytes = output.length(),
+            elapsedMs = SystemClock.elapsedRealtime() - startedAt,
+            attempts = attempt,
+            fastTrim = plan.fastTrim
+        )
     }
 
     private suspend fun runAttempt(
@@ -182,6 +223,7 @@ class VideoExporter(private val context: Context) {
         plan: Plan,
         output: File,
         startedAt: Long,
+        share: Float,
         onProgress: (ExportProgress) -> Unit
     ) {
         withContext(Dispatchers.Main) {
@@ -196,7 +238,7 @@ class VideoExporter(private val context: Context) {
                 val listener = object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                         running = false
-                        onProgress(ExportProgress(1f, SystemClock.elapsedRealtime() - startedAt, 0L))
+                        onProgress(ExportProgress(share, SystemClock.elapsedRealtime() - startedAt, null))
                         if (continuation.isActive) continuation.resume(Unit)
                     }
 
@@ -227,8 +269,9 @@ class VideoExporter(private val context: Context) {
                                 lastAdvance = now
                             }
                             val elapsed = now - startedAt
-                            val eta = if (best > 0.03f) (elapsed * (1f - best) / best).toLong() else null
-                            onProgress(ExportProgress(best, elapsed, eta))
+                            val overall = best * share
+                            val eta = if (overall > 0.03f) (elapsed * (1f - overall) / overall).toLong() else null
+                            onProgress(ExportProgress(overall, elapsed, eta))
                         }
 
                         if (sawProgress && now - lastAdvance > STALL_MS) {
@@ -247,16 +290,7 @@ class VideoExporter(private val context: Context) {
                     }
                 }
 
-                if (segments.size == 1) {
-                    transformer.start(editedItem(segments.first(), 0, plan), output.absolutePath)
-                } else {
-                    val sequence = EditedMediaItemSequence.Builder()
-                    segments.forEachIndexed { index, segment -> sequence.addItem(editedItem(segment, index, plan)) }
-                    val composition = Composition.Builder(sequence.build())
-                        .setEffects(Effects(emptyList(), plan.compositionEffects))
-                        .build()
-                    transformer.start(composition, output.absolutePath)
-                }
+                transformer.start(composition(segments, plan), output.absolutePath)
                 handler.post(poll)
 
                 continuation.invokeOnCancellation {
@@ -270,7 +304,20 @@ class VideoExporter(private val context: Context) {
         }
     }
 
-    private fun editedItem(segment: ExportSegment, index: Int, plan: Plan): EditedMediaItem {
+    private fun composition(segments: List<ExportSegment>, plan: Plan): Composition {
+        val video = EditedMediaItemSequence.Builder()
+        segments.forEach { video.addItem(editedItem(it, plan)) }
+        val sequences = ArrayList<EditedMediaItemSequence>()
+        sequences.add(video.build())
+        plan.music?.let { sequences.add(musicSequence(it)) }
+
+        return Composition.Builder(sequences)
+            .setEffects(Effects(plan.compositionAudio(), plan.compositionEffects))
+            .experimentalSetForceAudioTrack(plan.forceAudioTrack)
+            .build()
+    }
+
+    private fun editedItem(segment: ExportSegment, plan: Plan): EditedMediaItem {
         val clipping = MediaItem.ClippingConfiguration.Builder()
             .setStartPositionMs(segment.startMs)
             .setEndPositionMs(segment.endMs)
@@ -283,7 +330,33 @@ class VideoExporter(private val context: Context) {
 
         return EditedMediaItem.Builder(mediaItem)
             .setRemoveAudio(plan.muted)
-            .setEffects(Effects(plan.audio?.processorsFor(index).orEmpty(), plan.itemEffects))
+            .setEffects(Effects(plan.itemAudio?.processors().orEmpty(), plan.itemEffects))
+            .build()
+    }
+
+    private fun musicSequence(music: MusicPlan): EditedMediaItemSequence {
+        val clipping = MediaItem.ClippingConfiguration.Builder()
+            .setStartPositionMs(music.startMs)
+        music.endMs?.let { clipping.setEndPositionMs(it) }
+
+        val item = MediaItem.Builder()
+            .setUri(music.uri)
+            .setClippingConfiguration(clipping.build())
+            .build()
+
+        val processors = if (music.gain != 1f) {
+            listOf<AudioProcessor>(GainEnvelopeProcessor(music.gain, 0L, 0L, 0L))
+        } else {
+            emptyList()
+        }
+
+        val edited = EditedMediaItem.Builder(item)
+            .setRemoveVideo(true)
+            .setEffects(Effects(processors, emptyList()))
+            .build()
+
+        return EditedMediaItemSequence.Builder(edited)
+            .setIsLooping(music.loop)
             .build()
     }
 
@@ -294,14 +367,16 @@ class VideoExporter(private val context: Context) {
             builder.setVideoMimeType(MimeTypes.VIDEO_H264)
         }
 
-        plan.bitrate?.let { bitrate ->
+        if (plan.bitrate != null || plan.keyframeSeconds != null) {
             val settings = VideoEncoderSettings.Builder()
-                .setBitrate(bitrate)
-                .setBitrateMode(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
-                .build()
+            plan.bitrate?.let {
+                settings.setBitrate(it)
+                settings.setBitrateMode(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+            }
+            plan.keyframeSeconds?.let { settings.setiFrameIntervalSeconds(it) }
             builder.setEncoderFactory(
                 DefaultEncoderFactory.Builder(context)
-                    .setRequestedVideoEncoderSettings(settings)
+                    .setRequestedVideoEncoderSettings(settings.build())
                     .build()
             )
         }
@@ -323,10 +398,11 @@ class VideoExporter(private val context: Context) {
         val baseEffects = EffectsFactory.build(options)
 
         val turned = options.rotationDegrees % 180 != 0
-        val displayWidth = if (turned) info.height else info.width
-        val displayHeight = if (turned) info.width else info.height
+        val rotatedWidth = if (turned) info.height else info.width
+        val rotatedHeight = if (turned) info.width else info.height
+        val (displayWidth, displayHeight) = options.aspect.crop(rotatedWidth, rotatedHeight)
         val outputHeight = evenAtLeast(options.targetHeight ?: displayHeight)
-        val outputWidth = evenAtLeast((displayWidth.toLong() * outputHeight / displayHeight).toInt())
+        val outputWidth = evenAtLeast((displayWidth.toLong() * outputHeight / displayHeight.coerceAtLeast(1)).toInt())
 
         val overlay = TextOverlays.build(options.texts, outputHeight, options.speed)
         val speed = options.speed.coerceIn(0.1f, 10f)
@@ -341,9 +417,8 @@ class VideoExporter(private val context: Context) {
         val itemEffects = ArrayList<Effect>(baseEffects)
         val compositionEffects = ArrayList<Effect>()
         if (merged) {
-            itemEffects.add(
-                Presentation.createForWidthAndHeight(outputWidth, outputHeight, Presentation.LAYOUT_SCALE_TO_FIT)
-            )
+            val layout = if (options.hasAspect) Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP else Presentation.LAYOUT_SCALE_TO_FIT
+            itemEffects.add(Presentation.createForWidthAndHeight(outputWidth, outputHeight, layout))
             if (overlay != null) compositionEffects.add(overlay)
             if (fade != null) compositionEffects.add(fade)
         } else {
@@ -351,17 +426,32 @@ class VideoExporter(private val context: Context) {
             if (fade != null) itemEffects.add(fade)
         }
 
-        val audio = if (options.muted || (!options.hasSpeed && !options.hasVolume && !options.hasFade)) {
+        val itemAudio = if (options.muted || (!options.hasSpeed && !options.hasVolume)) {
             null
         } else {
-            AudioPlan(
-                speed = speed,
-                keepPitch = options.keepPitch,
-                gain = options.gain,
-                fadeInUs = options.fadeInMs * 1000L,
-                fadeOutUs = options.fadeOutMs * 1000L,
-                segmentUs = segmentUs
+            ItemAudio(speed, options.keepPitch, options.gain)
+        }
+
+        val music = options.music?.let { track ->
+            val wantedMs = totalUs / 1000L
+            val end = if (track.loop) null else min(track.durationMs, track.startOffsetMs + wantedMs).takeIf { it > track.startOffsetMs }
+            MusicPlan(
+                uri = Uri.parse(track.uri),
+                gain = track.volume / 100f,
+                loop = track.loop,
+                startMs = track.startOffsetMs.coerceAtLeast(0L),
+                endMs = end
             )
+        }
+
+        val hasAudioOutput = !options.muted || music != null
+        val fadeInUs = if (hasAudioOutput) options.fadeInMs * 1000L else 0L
+        val fadeOutUs = if (hasAudioOutput) options.fadeOutMs * 1000L else 0L
+
+        val mosh = options.datamosh?.let { settings ->
+            val start = (settings.startMs * 1000.0 / speed).toLong().coerceAtLeast(0L)
+            val end = settings.endMs?.let { (it * 1000.0 / speed).toLong() } ?: Long.MAX_VALUE
+            MoshPlan(settings.mode, start, end, settings.bloomFrames)
         }
 
         val frameRate = (info.frameRate ?: 30f).coerceIn(15f, 60f)
@@ -379,7 +469,8 @@ class VideoExporter(private val context: Context) {
         }
 
         val trimmed = segments.first().startMs > 0L || segments.first().endMs < info.durationMs
-        val fastTrim = !safe && !merged && itemEffects.isEmpty() && audio == null && !options.muted && trimmed
+        val audioWork = itemAudio != null || music != null || fadeInUs > 0L || fadeOutUs > 0L
+        val fastTrim = !safe && !merged && itemEffects.isEmpty() && !audioWork && mosh == null && !options.muted && trimmed
         val estimateRate = if (fastTrim) (sourceBitrate ?: bitrate) else bitrate + AUDIO_BITRATE
         val estimatedBytes = (estimateRate * seconds / 8.0).toLong()
 
@@ -387,11 +478,18 @@ class VideoExporter(private val context: Context) {
             itemEffects = itemEffects,
             compositionEffects = compositionEffects,
             bitrate = if (safe) null else bitrate.toInt(),
+            keyframeSeconds = options.datamosh?.keyframeSeconds,
             fastTrim = fastTrim,
-            forceH264 = safe,
+            forceH264 = safe || mosh != null,
             estimatedBytes = estimatedBytes,
             muted = options.muted,
-            audio = audio
+            itemAudio = itemAudio,
+            fadeInUs = fadeInUs,
+            fadeOutUs = fadeOutUs,
+            totalUs = totalUs,
+            music = music,
+            forceAudioTrack = music != null || (merged && !options.muted),
+            mosh = mosh
         )
     }
 

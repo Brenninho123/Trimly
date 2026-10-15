@@ -16,10 +16,12 @@ import com.brenninho.trimly.data.RecentVideo
 import com.brenninho.trimly.data.VideoDownloader
 import com.brenninho.trimly.i18n.AppLanguage
 import com.brenninho.trimly.model.Clip
+import com.brenninho.trimly.settings.AccentColor
 import com.brenninho.trimly.settings.AppSettings
 import com.brenninho.trimly.settings.LoginError
 import com.brenninho.trimly.settings.LoginStatus
 import com.brenninho.trimly.settings.SettingsState
+import com.brenninho.trimly.settings.ThemeMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -61,6 +63,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         SettingsState(
             language = settings.language,
             tipsEnabled = settings.tipsEnabled,
+            theme = settings.theme,
+            accent = settings.accent,
             profile = settings.profile
         )
     )
@@ -118,6 +122,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setTipsEnabled(enabled: Boolean) {
         settings.tipsEnabled = enabled
         _settingsState.update { it.copy(tipsEnabled = enabled) }
+    }
+
+    fun setTheme(mode: ThemeMode) {
+        settings.theme = mode
+        _settingsState.update { it.copy(theme = mode) }
+    }
+
+    fun setAccent(accent: AccentColor) {
+        settings.accent = accent
+        _settingsState.update { it.copy(accent = accent) }
     }
 
     fun beginDiscordLogin(): String {

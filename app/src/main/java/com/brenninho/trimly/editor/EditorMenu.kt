@@ -65,6 +65,10 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Gradient
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.BlurOn
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ViewAgenda
@@ -95,6 +99,7 @@ import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.model.ExportOptions
 import com.brenninho.trimly.model.ExportQuality
 import com.brenninho.trimly.model.FilterGroup
+import com.brenninho.trimly.model.MoshMode
 import com.brenninho.trimly.model.SpeedPresets
 import com.brenninho.trimly.model.VideoFilter
 import kotlinx.coroutines.delay
@@ -152,6 +157,10 @@ private class MenuActions(
     val speed: () -> Unit,
     val audio: () -> Unit,
     val split: () -> Unit,
+    val aspect: () -> Unit,
+    val music: () -> Unit,
+    val datamosh: () -> Unit,
+    val snapshot: () -> Unit,
     val reset: () -> Unit
 )
 
@@ -177,6 +186,10 @@ fun EditorMenu(
     onSpeed: () -> Unit,
     onAudio: () -> Unit,
     onSplit: () -> Unit,
+    onAspect: () -> Unit,
+    onMusic: () -> Unit,
+    onDatamosh: () -> Unit,
+    onSnapshot: () -> Unit,
     onReset: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -196,6 +209,10 @@ fun EditorMenu(
         speed = onSpeed,
         audio = onAudio,
         split = onSplit,
+        aspect = onAspect,
+        music = onMusic,
+        datamosh = onDatamosh,
+        snapshot = onSnapshot,
         reset = onReset
     )
     val tools = buildTools(s, options, segmentCount, hasEdits, actions)
@@ -777,6 +794,15 @@ private fun buildTools(
             onClick = actions.split
         ),
         ToolSpec(
+            id = "aspect",
+            category = MenuCategory.EDIT,
+            icon = Icons.Filled.AspectRatio,
+            label = s.toolAspect,
+            status = if (options.hasAspect) options.aspect.label else null,
+            active = options.hasAspect,
+            onClick = actions.aspect
+        ),
+        ToolSpec(
             id = "merge",
             category = MenuCategory.EDIT,
             icon = Icons.Filled.Layers,
@@ -831,6 +857,24 @@ private fun buildTools(
             onClick = actions.text
         ),
         ToolSpec(
+            id = "datamosh",
+            category = MenuCategory.STYLE,
+            icon = Icons.Filled.BlurOn,
+            label = s.toolDatamosh,
+            status = options.datamosh?.let { if (it.mode == MoshMode.MELT) s.moshMelt else s.moshBloom },
+            active = options.datamosh != null,
+            onClick = actions.datamosh
+        ),
+        ToolSpec(
+            id = "music",
+            category = MenuCategory.AUDIO,
+            icon = Icons.Filled.LibraryMusic,
+            label = s.toolMusic,
+            status = options.music?.name,
+            active = options.music != null,
+            onClick = actions.music
+        ),
+        ToolSpec(
             id = "mute",
             category = MenuCategory.AUDIO,
             icon = if (options.muted) Icons.Filled.MusicOff else Icons.Filled.MusicNote,
@@ -866,6 +910,13 @@ private fun buildTools(
             onClick = actions.quality
         ),
         ToolSpec(
+            id = "snapshot",
+            category = MenuCategory.OUTPUT,
+            icon = Icons.Filled.PhotoCamera,
+            label = s.toolSnapshot,
+            onClick = actions.snapshot
+        ),
+        ToolSpec(
             id = "reset",
             category = MenuCategory.OUTPUT,
             icon = Icons.Filled.Refresh,
@@ -886,6 +937,9 @@ private fun countEdits(options: ExportOptions, segmentCount: Int): Int {
     if (options.hasSpeed) count += 1
     if (options.hasVolume && !options.muted) count += 1
     if (options.hasFade) count += 1
+    if (options.hasAspect) count += 1
+    if (options.music != null) count += 1
+    if (options.datamosh != null) count += 1
     if (options.shortSide != null) count += 1
     if (options.quality != ExportQuality.STANDARD) count += 1
     count += options.texts.size

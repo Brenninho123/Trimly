@@ -228,7 +228,7 @@ fun AudioPanel(
 }
 
 @Composable
-private fun PanelHeader(
+internal fun PanelHeader(
     title: String,
     subtitle: String,
     onClose: () -> Unit
@@ -289,7 +289,7 @@ private fun FadeRow(
 }
 
 @Composable
-private fun SwitchRow(
+internal fun SwitchRow(
     title: String,
     hint: String,
     checked: Boolean,
@@ -321,7 +321,7 @@ private fun SwitchRow(
 }
 
 @Composable
-private fun ChoicePill(
+internal fun ChoicePill(
     label: String,
     selected: Boolean,
     enabled: Boolean,

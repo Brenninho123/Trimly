@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import com.brenninho.trimly.model.Adjustment
+import com.brenninho.trimly.model.AspectRatio
 import com.brenninho.trimly.model.ExportOptions
 import com.brenninho.trimly.model.SpeedPresets
 import com.brenninho.trimly.model.VideoFilter
@@ -129,6 +130,10 @@ class EditorController(
 
     fun toggleMute() {
         options = options.copy(muted = !options.muted)
+    }
+
+    fun setAspect(aspect: AspectRatio) {
+        options = options.copy(aspect = aspect)
     }
 
     fun setSpeed(value: Float) {

@@ -25,8 +25,14 @@ data class ExportOptions(
     val volume: Int = 100,
     val fadeInMs: Long = 0L,
     val fadeOutMs: Long = 0L,
-    val fadeVideo: Boolean = false
+    val fadeVideo: Boolean = false,
+    val aspect: AspectRatio = AspectRatio.ORIGINAL,
+    val music: MusicTrack? = null,
+    val datamosh: Datamosh? = null
 ) {
+    val hasAspect: Boolean
+        get() = aspect != AspectRatio.ORIGINAL
+
     val hasSpeed: Boolean
         get() = speed != 1f
 

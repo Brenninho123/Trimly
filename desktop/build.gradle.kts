@@ -39,7 +39,7 @@ compose.desktop {
                 dirChooser = true
                 perUserInstall = true
                 upgradeUuid = "8f6c3a52-5d1e-4b7a-9c0e-2f4a6b1d9e33"
-                iconFile.set(project.file("icons/trimly.ico"))
+                iconFile.set(project.file("src/main/resources/trimly.ico"))
             }
         }
     }

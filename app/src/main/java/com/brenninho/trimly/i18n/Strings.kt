@@ -4,6 +4,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import com.brenninho.trimly.data.ImportStage
 import com.brenninho.trimly.data.LinkKind
 import com.brenninho.trimly.model.Adjustment
+import com.brenninho.trimly.model.AspectRatio
+import com.brenninho.trimly.settings.AccentColor
+import com.brenninho.trimly.settings.ThemeMode
 import com.brenninho.trimly.model.VideoFilter
 import java.util.Locale
 
@@ -301,6 +304,53 @@ interface AppStrings {
     val splitTooClose: String
     fun chipVolume(percent: Int): String
     fun fadeSeconds(seconds: String): String
+
+    val toolAspect: String
+    val aspectTitle: String
+    val aspectOriginal: String
+    val aspectHint: String
+    fun aspectCaption(aspect: AspectRatio): String
+    val toolMusic: String
+    val musicTitle: String
+    val musicEmpty: String
+    val musicPick: String
+    val musicReplace: String
+    val musicRemove: String
+    val musicVolume: String
+    val musicOriginal: String
+    val musicStart: String
+    val musicLoop: String
+    val musicLoopHint: String
+    val musicFailed: String
+    val toolDatamosh: String
+    val moshTitle: String
+    val moshIntro: String
+    val moshOn: String
+    val moshPlayerNote: String
+    val moshMelt: String
+    val moshMeltHint: String
+    val moshBloom: String
+    val moshBloomHint: String
+    val moshRange: String
+    fun moshFrom(time: String): String
+    fun moshTo(time: String): String
+    val moshToEnd: String
+    val moshSetStart: String
+    val moshSetEnd: String
+    val moshClearEnd: String
+    val moshKeyframes: String
+    val moshKeyframesHint: String
+    val moshBloomLength: String
+    fun moshFrames(count: Int): String
+    val toolSnapshot: String
+    val snapshotSaved: String
+    val snapshotFailed: String
+    val appearanceTitle: String
+    val themeTitle: String
+    fun themeName(mode: ThemeMode): String
+    val accentTitle: String
+    fun accentName(accent: AccentColor): String
+    val accentDynamicHint: String
 }
 
 object EnglishStrings : AppStrings {
@@ -632,6 +682,73 @@ object EnglishStrings : AppStrings {
     override val splitTooClose = "Move the playhead away from the clip edges to split"
     override fun chipVolume(percent: Int) = "Volume $percent%"
     override fun fadeSeconds(seconds: String) = "$seconds s"
+
+    override val toolAspect = "Aspect"
+    override val aspectTitle = "Aspect ratio"
+    override val aspectOriginal = "Original"
+    override val aspectHint = "Crops from the center"
+    override fun aspectCaption(aspect: AspectRatio) = when (aspect) {
+        AspectRatio.ORIGINAL -> "No crop"
+        AspectRatio.PORTRAIT_9_16 -> "Stories, Reels"
+        AspectRatio.SQUARE -> "Square"
+        AspectRatio.PORTRAIT_4_5 -> "Feed"
+        AspectRatio.LANDSCAPE_16_9 -> "Widescreen"
+        AspectRatio.LANDSCAPE_4_3 -> "Classic"
+        AspectRatio.CINEMA_21_9 -> "Cinema"
+    }
+    override val toolMusic = "Music"
+    override val musicTitle = "Background music"
+    override val musicEmpty = "Add a song or any audio file. It plays under the video's own sound."
+    override val musicPick = "Choose music"
+    override val musicReplace = "Replace"
+    override val musicRemove = "Remove music"
+    override val musicVolume = "Music"
+    override val musicOriginal = "Video sound"
+    override val musicStart = "Start song at"
+    override val musicLoop = "Loop music"
+    override val musicLoopHint = "Repeats the song until the video ends"
+    override val musicFailed = "This file has no audio Trimly can read"
+    override val toolDatamosh = "Datamosh"
+    override val moshTitle = "Datamosh"
+    override val moshIntro = "Glitches the video by breaking its compression. Shows up in the exported file."
+    override val moshOn = "Turn on datamosh"
+    override val moshPlayerNote = "Players can show the glitch a little differently. Check the result in your gallery."
+    override val moshMelt = "Melt"
+    override val moshMeltHint = "Removes keyframes so the picture smears into the next motion. Strongest at cuts between clips."
+    override val moshBloom = "Bloom"
+    override val moshBloomHint = "Repeats one frame of motion so pixels pour out of whatever is moving."
+    override val moshRange = "Where it happens"
+    override fun moshFrom(time: String) = "From $time"
+    override fun moshTo(time: String) = "to $time"
+    override val moshToEnd = "to the end"
+    override val moshSetStart = "Start here"
+    override val moshSetEnd = "End here"
+    override val moshClearEnd = "Run until the end"
+    override val moshKeyframes = "Break every"
+    override val moshKeyframesHint = "Shorter values start the glitch closer to your marks"
+    override val moshBloomLength = "Bloom length"
+    override fun moshFrames(count: Int) = "$count frames"
+    override val toolSnapshot = "Snapshot"
+    override val snapshotSaved = "Frame saved to Pictures/Trimly"
+    override val snapshotFailed = "Could not save this frame"
+    override val appearanceTitle = "Appearance"
+    override val themeTitle = "Theme"
+    override fun themeName(mode: ThemeMode) = when (mode) {
+        ThemeMode.SYSTEM -> "System"
+        ThemeMode.LIGHT -> "Light"
+        ThemeMode.DARK -> "Dark"
+        ThemeMode.BLACK -> "Black"
+    }
+    override val accentTitle = "Accent color"
+    override fun accentName(accent: AccentColor) = when (accent) {
+        AccentColor.TRIMLY -> "Trimly blue"
+        AccentColor.VIOLET -> "Violet"
+        AccentColor.MINT -> "Mint"
+        AccentColor.SUNSET -> "Sunset"
+        AccentColor.ROSE -> "Rose"
+        AccentColor.DYNAMIC -> "Wallpaper colors"
+    }
+    override val accentDynamicHint = "Uses colors from your wallpaper (Android 12 and newer)"
 }
 
 object PortugueseStrings : AppStrings {
@@ -963,6 +1080,73 @@ object PortugueseStrings : AppStrings {
     override val splitTooClose = "Afaste o cursor das bordas do clipe para dividir"
     override fun chipVolume(percent: Int) = "Volume $percent%"
     override fun fadeSeconds(seconds: String) = "$seconds s"
+
+    override val toolAspect = "Proporção"
+    override val aspectTitle = "Proporção da tela"
+    override val aspectOriginal = "Original"
+    override val aspectHint = "Corta a partir do centro"
+    override fun aspectCaption(aspect: AspectRatio) = when (aspect) {
+        AspectRatio.ORIGINAL -> "Sem corte"
+        AspectRatio.PORTRAIT_9_16 -> "Stories, Reels"
+        AspectRatio.SQUARE -> "Quadrado"
+        AspectRatio.PORTRAIT_4_5 -> "Feed"
+        AspectRatio.LANDSCAPE_16_9 -> "Widescreen"
+        AspectRatio.LANDSCAPE_4_3 -> "Clássico"
+        AspectRatio.CINEMA_21_9 -> "Cinema"
+    }
+    override val toolMusic = "Música"
+    override val musicTitle = "Música de fundo"
+    override val musicEmpty = "Adicione uma música ou qualquer áudio. Ele toca junto com o som do vídeo."
+    override val musicPick = "Escolher música"
+    override val musicReplace = "Trocar"
+    override val musicRemove = "Remover música"
+    override val musicVolume = "Música"
+    override val musicOriginal = "Som do vídeo"
+    override val musicStart = "Começar em"
+    override val musicLoop = "Repetir música"
+    override val musicLoopHint = "Repete a música até o vídeo acabar"
+    override val musicFailed = "Este arquivo não tem áudio que o Trimly consiga ler"
+    override val toolDatamosh = "Datamosh"
+    override val moshTitle = "Datamosh"
+    override val moshIntro = "Cria glitches quebrando a compressão do vídeo. Aparece no arquivo exportado."
+    override val moshOn = "Ativar datamosh"
+    override val moshPlayerNote = "Cada player pode mostrar o glitch um pouco diferente. Confira o resultado na galeria."
+    override val moshMelt = "Derreter"
+    override val moshMeltHint = "Remove os quadros-chave para a imagem escorrer no próximo movimento. Mais forte nos cortes entre clipes."
+    override val moshBloom = "Explosão"
+    override val moshBloomHint = "Repete um quadro de movimento para os pixels transbordarem do que está se mexendo."
+    override val moshRange = "Onde acontece"
+    override fun moshFrom(time: String) = "De $time"
+    override fun moshTo(time: String) = "até $time"
+    override val moshToEnd = "até o fim"
+    override val moshSetStart = "Começar aqui"
+    override val moshSetEnd = "Terminar aqui"
+    override val moshClearEnd = "Ir até o fim"
+    override val moshKeyframes = "Quebrar a cada"
+    override val moshKeyframesHint = "Valores menores começam o glitch mais perto das marcações"
+    override val moshBloomLength = "Duração da explosão"
+    override fun moshFrames(count: Int) = "$count quadros"
+    override val toolSnapshot = "Foto do quadro"
+    override val snapshotSaved = "Quadro salvo em Pictures/Trimly"
+    override val snapshotFailed = "Não foi possível salvar este quadro"
+    override val appearanceTitle = "Aparência"
+    override val themeTitle = "Tema"
+    override fun themeName(mode: ThemeMode) = when (mode) {
+        ThemeMode.SYSTEM -> "Sistema"
+        ThemeMode.LIGHT -> "Claro"
+        ThemeMode.DARK -> "Escuro"
+        ThemeMode.BLACK -> "Preto"
+    }
+    override val accentTitle = "Cor de destaque"
+    override fun accentName(accent: AccentColor) = when (accent) {
+        AccentColor.TRIMLY -> "Azul Trimly"
+        AccentColor.VIOLET -> "Violeta"
+        AccentColor.MINT -> "Menta"
+        AccentColor.SUNSET -> "Pôr do sol"
+        AccentColor.ROSE -> "Rosa"
+        AccentColor.DYNAMIC -> "Cores do papel de parede"
+    }
+    override val accentDynamicHint = "Usa as cores do seu papel de parede (Android 12 ou mais novo)"
 }
 
 object SpanishStrings : AppStrings {
@@ -1294,6 +1478,73 @@ object SpanishStrings : AppStrings {
     override val splitTooClose = "Aleja el cursor de los bordes del clip para dividir"
     override fun chipVolume(percent: Int) = "Volumen $percent%"
     override fun fadeSeconds(seconds: String) = "$seconds s"
+
+    override val toolAspect = "Formato"
+    override val aspectTitle = "Relación de aspecto"
+    override val aspectOriginal = "Original"
+    override val aspectHint = "Recorta desde el centro"
+    override fun aspectCaption(aspect: AspectRatio) = when (aspect) {
+        AspectRatio.ORIGINAL -> "Sin recorte"
+        AspectRatio.PORTRAIT_9_16 -> "Stories, Reels"
+        AspectRatio.SQUARE -> "Cuadrado"
+        AspectRatio.PORTRAIT_4_5 -> "Feed"
+        AspectRatio.LANDSCAPE_16_9 -> "Panorámico"
+        AspectRatio.LANDSCAPE_4_3 -> "Clásico"
+        AspectRatio.CINEMA_21_9 -> "Cine"
+    }
+    override val toolMusic = "Música"
+    override val musicTitle = "Música de fondo"
+    override val musicEmpty = "Añade una canción o cualquier audio. Suena junto al sonido del video."
+    override val musicPick = "Elegir música"
+    override val musicReplace = "Cambiar"
+    override val musicRemove = "Quitar música"
+    override val musicVolume = "Música"
+    override val musicOriginal = "Sonido del video"
+    override val musicStart = "Empezar en"
+    override val musicLoop = "Repetir música"
+    override val musicLoopHint = "Repite la canción hasta que termine el video"
+    override val musicFailed = "Este archivo no tiene audio que Trimly pueda leer"
+    override val toolDatamosh = "Datamosh"
+    override val moshTitle = "Datamosh"
+    override val moshIntro = "Crea glitches rompiendo la compresión del video. Aparece en el archivo exportado."
+    override val moshOn = "Activar datamosh"
+    override val moshPlayerNote = "Cada reproductor puede mostrar el glitch un poco distinto. Revisa el resultado en la galería."
+    override val moshMelt = "Derretir"
+    override val moshMeltHint = "Quita los fotogramas clave para que la imagen se escurra en el siguiente movimiento. Más fuerte en los cortes entre clips."
+    override val moshBloom = "Estallido"
+    override val moshBloomHint = "Repite un fotograma de movimiento para que los píxeles desborden de lo que se mueve."
+    override val moshRange = "Dónde ocurre"
+    override fun moshFrom(time: String) = "Desde $time"
+    override fun moshTo(time: String) = "hasta $time"
+    override val moshToEnd = "hasta el final"
+    override val moshSetStart = "Empezar aquí"
+    override val moshSetEnd = "Terminar aquí"
+    override val moshClearEnd = "Hasta el final"
+    override val moshKeyframes = "Romper cada"
+    override val moshKeyframesHint = "Los valores cortos empiezan el glitch más cerca de tus marcas"
+    override val moshBloomLength = "Duración del estallido"
+    override fun moshFrames(count: Int) = "$count fotogramas"
+    override val toolSnapshot = "Captura"
+    override val snapshotSaved = "Fotograma guardado en Pictures/Trimly"
+    override val snapshotFailed = "No se pudo guardar este fotograma"
+    override val appearanceTitle = "Apariencia"
+    override val themeTitle = "Tema"
+    override fun themeName(mode: ThemeMode) = when (mode) {
+        ThemeMode.SYSTEM -> "Sistema"
+        ThemeMode.LIGHT -> "Claro"
+        ThemeMode.DARK -> "Oscuro"
+        ThemeMode.BLACK -> "Negro"
+    }
+    override val accentTitle = "Color de acento"
+    override fun accentName(accent: AccentColor) = when (accent) {
+        AccentColor.TRIMLY -> "Azul Trimly"
+        AccentColor.VIOLET -> "Violeta"
+        AccentColor.MINT -> "Menta"
+        AccentColor.SUNSET -> "Atardecer"
+        AccentColor.ROSE -> "Rosa"
+        AccentColor.DYNAMIC -> "Colores del fondo de pantalla"
+    }
+    override val accentDynamicHint = "Usa los colores de tu fondo de pantalla (Android 12 o más reciente)"
 }
 
 fun stringsFor(language: AppLanguage): AppStrings {

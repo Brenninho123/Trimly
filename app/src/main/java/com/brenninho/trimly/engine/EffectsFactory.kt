@@ -36,6 +36,10 @@ object EffectsFactory {
             effects.add(ColorMatrixEffect(ColorMath.toGl(matrix)))
         }
 
+        options.aspect.ratio?.let { ratio ->
+            effects.add(Presentation.createForAspectRatio(ratio, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP))
+        }
+
         options.targetHeight?.let { effects.add(Presentation.createForHeight(it)) }
 
         return effects

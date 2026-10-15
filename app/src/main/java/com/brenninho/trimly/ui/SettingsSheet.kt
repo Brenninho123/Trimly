@@ -110,6 +110,14 @@ fun SettingsSheet(
             SectionTitle(s.languageTitle)
             LanguageSection(current = settings.language, onSelect = actions.onLanguage)
 
+            SectionTitle(s.appearanceTitle)
+            AppearanceSection(
+                theme = settings.theme,
+                accent = settings.accent,
+                onTheme = actions.onTheme,
+                onAccent = actions.onAccent
+            )
+
             SectionTitle(s.homeSection)
             SwitchRow(
                 title = s.tipsTitle,

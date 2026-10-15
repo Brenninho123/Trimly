@@ -78,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
 import com.brenninho.trimly.model.Adjustment
+import com.brenninho.trimly.model.AspectRatio
 import com.brenninho.trimly.model.ColorMath
 import com.brenninho.trimly.model.FilterGroup
 import com.brenninho.trimly.model.SpeedPresets
@@ -655,6 +656,20 @@ private fun EditPanel(controller: EditorController) {
                     )
                 }
             )
+        }
+
+        Text("Aspect ratio", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.horizontalScroll(rememberScrollState())
+        ) {
+            AspectRatio.entries.forEach { aspect ->
+                FilterChip(
+                    selected = options.aspect == aspect,
+                    onClick = { controller.setAspect(aspect) },
+                    label = { Text(if (aspect == AspectRatio.ORIGINAL) "Original" else aspect.label) }
+                )
+            }
         }
 
         HorizontalDivider()

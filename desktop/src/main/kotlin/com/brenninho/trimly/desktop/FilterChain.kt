@@ -25,6 +25,13 @@ object FilterChain {
             parts.addAll(color)
         }
 
+        options.aspect.ratio?.let { ratio ->
+            val r = String.format(Locale.ROOT, "%.6f", ratio)
+            parts.add(
+                "crop=trunc(if(gt(iw/ih\\,$r)\\,ih*$r\\,iw)/2)*2:trunc(if(gt(iw/ih\\,$r)\\,ih\\,iw/$r)/2)*2"
+            )
+        }
+
         options.targetHeight?.let { parts.add("scale=-2:$it") }
 
         return parts.joinToString(",")

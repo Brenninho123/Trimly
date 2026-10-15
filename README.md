@@ -53,7 +53,8 @@ A free, open source video editor for Android and Windows. Trim, merge, add text,
 | Undo removal | Removed items can be restored from the snackbar |
 | Overview | Greeting, animated totals and a continue-editing card |
 | Tips | Rotating tips that can be turned off in Settings |
-| Settings | Gear button with language, Discord login, tips and about |
+| Settings | Gear button with language, theme, accent color, Discord login, tips and about |
+| Appearance | System, light, dark and pure black themes, five accent colors and wallpaper colors on Android 12+ |
 
 ### Editor
 
@@ -65,6 +66,10 @@ A free, open source video editor for Android and Windows. Trim, merge, add text,
 | History | Undo and redo up to 50 steps |
 | Transform | Rotate in 90 degree steps, flip horizontally, mute |
 | Split | Cut the selected clip in two at the playhead |
+| Aspect ratio | Crop to 9:16, 1:1, 4:5, 16:9, 4:3 or 21:9 from the center, with a live preview |
+| Music | Background music from any audio file, with its own volume, loop and start point, mixed with the video sound |
+| Datamosh | Melt (keyframes removed) and Bloom (motion repeated) glitch modes over a chosen range |
+| Snapshot | Save the current frame, with filters, crop and text, as a JPEG in Pictures/Trimly |
 | Speed | 0.25x to 4x with presets and a slider, optional voice pitch preservation, live preview |
 | Audio | Volume from 0 to 200%, fade in and fade out, optional fade of the picture to black |
 | Filters | 9 filters plus Original, with adjustable intensity |
@@ -75,6 +80,18 @@ A free, open source video editor for Android and Windows. Trim, merge, add text,
 | Output quality | Resolution (original, 1080p, 720p, 480p) and bitrate level (standard, high, maximum) |
 | Export | MP4 saved to the gallery, ETA, cancel, share and open, automatic retry, stall detection |
 | Menu | Categorized tool dock with status labels, badges and an all-tools grid |
+
+### Datamosh
+
+Datamosh works on the compressed video itself, so it happens after the normal export:
+
+1. The video is encoded in H.264 with a keyframe at the interval you pick.
+2. A second pass rewrites the MP4 with `MediaExtractor` and `MediaMuxer`.
+   - **Melt** drops every keyframe inside the range, so the following frames apply their motion to the wrong picture.
+   - **Bloom** takes one motion frame and repeats it for the chosen number of frames, then also drops keyframes until the range ends.
+3. Audio is copied untouched, so sync is kept.
+
+The effect is not drawn in the live preview. Melt is strongest at cuts between merged clips. Different players can render the broken frames a little differently.
 
 ### Link import
 
@@ -156,6 +173,10 @@ Details are in [Windows app](#windows-app).
 | Merge clips | Edit, then Merge, then **Add clip**. Tap a clip to trim it, use the arrows to reorder, the copy button to duplicate |
 | Split | Move the playhead, then Edit, then Split |
 | Change speed | Edit, then Speed. Pick a preset or drag the slider |
+| Crop | Edit, then Aspect |
+| Add music | Audio, then Music |
+| Datamosh | Style, then Datamosh. Set the range with the playhead |
+| Save a frame | Output, then Snapshot |
 | Volume and fades | Audio, then Volume or Fade |
 | Import from a link | Home, then **Link**, or share a link to Trimly from another app |
 | Choose quality | Output, then Quality |
@@ -340,7 +361,8 @@ data class ExportOptions(
 
 - `rotationDegrees` is counterclockwise, in steps of 90.
 - `speed` ranges from 0.25 to 4. Text timings stay in source time and are scaled at export.
-- `volume` is a percentage from 0 to 200. Fades are in output time, so they keep their length at any speed.
+- `volume` is a percentage from 0 to 200. Fades are in output time, so they keep their length at any speed, and they apply to the final mix including music.
+- `aspect` crops from the center after rotation. `music` is a `MusicTrack` with its own volume, loop and start offset. `datamosh` is null when the effect is off.
 - `shortSide` is the user choice (1080, 720, 480). `targetHeight` is computed at export time from the source size and the rotation.
 - Adjustments range from -100 to 100.
 
@@ -642,7 +664,12 @@ The CI workflow downloads a GPL build of FFmpeg and bundles it. Distributing tha
 - [x] Split a clip in two
 - [x] Volume and audio fades
 - [x] Advanced link import
+- [x] Datamosh
+- [x] Background music
+- [x] Aspect ratio crop
+- [x] Themes and accent colors
 - [ ] Speed per clip and speed ramps
+- [ ] Datamosh preview inside the editor
 - [ ] Text styles, fonts and animations
 - [ ] Merge and text on Windows
 - [ ] Playback in the Windows editor

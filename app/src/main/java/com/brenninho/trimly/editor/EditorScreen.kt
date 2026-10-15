@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -80,6 +81,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -101,10 +103,12 @@ import com.brenninho.trimly.data.FrameExtractor
 import com.brenninho.trimly.i18n.LocalStrings
 import com.brenninho.trimly.model.Clip
 import com.brenninho.trimly.model.ColorMath
+import com.brenninho.trimly.model.AspectRatio
 import com.brenninho.trimly.model.ExportQuality
 import com.brenninho.trimly.model.SpeedPresets
 import com.brenninho.trimly.model.VideoFilter
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -161,6 +165,16 @@ fun EditorScreen(
     var flashDirection by remember { mutableIntStateOf(0) }
     var flashTick by remember { mutableIntStateOf(0) }
     var fadeLevel by remember { mutableFloatStateOf(1f) }
+    val musicUri = options.music?.uri
+    val musicPlayer = remember(musicUri) {
+        musicUri?.let { uri ->
+            ExoPlayer.Builder(context).build().apply {
+                setMediaItem(MediaItem.fromUri(uri))
+                prepare()
+            }
+        }
+    }
+    val latestMusicPlayer by rememberUpdatedState(musicPlayer)
 
     val menuCategory = MenuCategory.entries[menuCategoryIndex.coerceIn(0, MenuCategory.entries.lastIndex)]
     val range by rememberUpdatedState(trimStart to trimEnd)
@@ -207,8 +221,13 @@ fun EditorScreen(
         }
     }
 
+    DisposableEffect(musicPlayer) {
+        onDispose { musicPlayer?.release() }
+    }
+
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         exoPlayer.pause()
+        musicPlayer?.pause()
     }
 
     LaunchedEffect(Unit) {
@@ -240,6 +259,23 @@ fun EditorScreen(
                 appliedVolume = volume
             }
             fadeLevel = if (opts.fadeVideo) envelope else 1f
+
+            val music = opts.music
+            val player = latestMusicPlayer
+            if (music != null && player != null) {
+                val timeline = snapshot.offsetBeforeSelectedMs + snapshot.clip.relativePosition(current)
+                val outputTime = opts.outputMs(timeline)
+                val length = (music.durationMs - music.startOffsetMs).coerceAtLeast(1L)
+                val ended = !music.loop && outputTime >= length
+                val target = music.startOffsetMs + if (music.loop) outputTime % length else outputTime.coerceAtMost(length)
+                if (exoPlayer.isPlaying && !ended) {
+                    if (abs(player.currentPosition - target) > 250L) player.seekTo(target)
+                    if (!player.isPlaying) player.play()
+                } else if (player.isPlaying) {
+                    player.pause()
+                }
+                player.volume = minOf(1f, music.volume / 100f) * envelope
+            }
             delay(33)
         }
     }
@@ -305,10 +341,30 @@ fun EditorScreen(
         ActivityResultContracts.PickVisualMedia()
     ) { uri -> uri?.let(viewModel::addSegment) }
 
+    val musicPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let(viewModel::setMusic) }
+
+    val pickMusic: () -> Unit = {
+        try {
+            musicPicker.launch(arrayOf("audio/*"))
+        } catch (e: ActivityNotFoundException) {
+            announce(s.musicFailed)
+        }
+    }
+
     LaunchedEffect(state.notice) {
         val notice = state.notice
         if (notice != null) {
-            announce(if (notice == EditorNotice.LIMIT) s.mergeLimit else s.mergeAddFailed)
+            announce(
+                when (notice) {
+                    EditorNotice.LIMIT -> s.mergeLimit
+                    EditorNotice.ADD_FAILED -> s.mergeAddFailed
+                    EditorNotice.MUSIC_FAILED -> s.musicFailed
+                    EditorNotice.SNAPSHOT_SAVED -> s.snapshotSaved
+                    EditorNotice.SNAPSHOT_FAILED -> s.snapshotFailed
+                }
+            )
             viewModel.consumeNotice()
         }
     }
@@ -377,6 +433,15 @@ fun EditorScreen(
             }
             if (options.hasVolume && !options.muted) {
                 add(EditChip("volume", s.chipVolume(options.volume)) { viewModel.setVolume(100) })
+            }
+            if (options.hasAspect) {
+                add(EditChip("aspect", options.aspect.label) { viewModel.setAspect(AspectRatio.ORIGINAL) })
+            }
+            options.music?.let { music ->
+                add(EditChip("music", music.name.take(14)) { viewModel.removeMusic() })
+            }
+            if (options.datamosh != null) {
+                add(EditChip("datamosh", s.toolDatamosh) { viewModel.setDatamosh(false) })
             }
             if (options.hasFade) {
                 add(EditChip("fade", s.fade) {
@@ -466,16 +531,43 @@ fun EditorScreen(
                 } else {
                     minOf(availableWidth, availableHeight * ratio) / ratio
                 }
-                val viewWidth = viewHeight * ratio
-                val footprintWidth = if (turned) viewHeight else viewWidth
-                val footprintHeight = if (turned) viewWidth else viewHeight
+                val baseWidth = viewHeight * ratio
+                val baseFootprintWidth = if (turned) viewHeight else baseWidth
+                val baseFootprintHeight = if (turned) baseWidth else viewHeight
+
+                val cropRatio = options.aspect.ratio
+                val zoom: Float
+                val boxWidth: Float
+                val boxHeight: Float
+                if (cropRatio == null) {
+                    zoom = 1f
+                    boxWidth = baseFootprintWidth
+                    boxHeight = baseFootprintHeight
+                } else {
+                    val footprintRatio = baseFootprintWidth / baseFootprintHeight.coerceAtLeast(1f)
+                    val cropWidth = if (footprintRatio > cropRatio) baseFootprintHeight * cropRatio else baseFootprintWidth
+                    val cropHeight = if (footprintRatio > cropRatio) baseFootprintHeight else baseFootprintWidth / cropRatio
+                    zoom = minOf(availableWidth / cropWidth.coerceAtLeast(1f), availableHeight / cropHeight.coerceAtLeast(1f))
+                    boxWidth = cropWidth * zoom
+                    boxHeight = cropHeight * zoom
+                }
+                val viewWidth = baseWidth * zoom
+                val scaledHeight = viewHeight * zoom
+                val footprintWidth = baseFootprintWidth * zoom
+                val footprintHeight = baseFootprintHeight * zoom
 
                 val viewWidthPx = with(density) { viewWidth.dp.roundToPx() }.coerceAtLeast(1)
-                val viewHeightPx = with(density) { viewHeight.dp.roundToPx() }.coerceAtLeast(1)
+                val viewHeightPx = with(density) { scaledHeight.dp.roundToPx() }.coerceAtLeast(1)
                 val turnDegrees = options.rotationDegrees.toFloat()
                 val flipped = options.flipHorizontal
                 val matrix = shownMatrix
 
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(boxWidth.dp, boxHeight.dp)
+                        .clipToBounds()
+                ) {
                 AndroidView(
                     factory = { ctx ->
                         val texture = TextureView(ctx)
@@ -503,8 +595,9 @@ fun EditorScreen(
                         }
                         texture.setLayerPaint(layerPaint)
                     },
-                    modifier = Modifier.size(footprintWidth.dp, footprintHeight.dp)
+                    modifier = Modifier.requiredSize(footprintWidth.dp, footprintHeight.dp)
                 )
+                }
 
                 Box(
                     modifier = Modifier
@@ -525,7 +618,7 @@ fun EditorScreen(
 
                 Box(
                     modifier = Modifier
-                        .size(footprintWidth.dp, footprintHeight.dp)
+                        .size(boxWidth.dp, boxHeight.dp)
                         .graphicsLayer { alpha = 1f - fadeLevel }
                         .background(Color.Black)
                 )
@@ -537,7 +630,7 @@ fun EditorScreen(
                     editable = panel == PanelTab.TEXT && !exporting,
                     onSelect = viewModel::selectText,
                     onMove = { id, x, y -> viewModel.moveText(id, x, y) },
-                    modifier = Modifier.size(footprintWidth.dp, footprintHeight.dp)
+                    modifier = Modifier.size(boxWidth.dp, boxHeight.dp)
                 )
 
                 OverlayVisibility(visible = !playing && !buffering) {
@@ -580,7 +673,9 @@ fun EditorScreen(
                     modifier = Modifier.align(Alignment.TopStart)
                 ) {
                     InfoBadge(
-                        text = "${state.sourceWidth} x ${state.sourceHeight}",
+                        text = state.outputSize.let { (w, h) ->
+                            if (options.hasAspect) "${options.aspect.label} · $w × $h" else "$w × $h"
+                        },
                         modifier = Modifier.padding(10.dp)
                     )
                 }
@@ -737,6 +832,45 @@ fun EditorScreen(
                                 onClose = { panel = null }
                             )
 
+                            PanelTab.ASPECT -> AspectPanel(
+                                current = options.aspect,
+                                outputSize = state.outputSize,
+                                enabled = !exporting,
+                                onSelect = {
+                                    tick()
+                                    viewModel.setAspect(it)
+                                },
+                                onClose = { panel = null }
+                            )
+
+                            PanelTab.MUSIC -> MusicPanel(
+                                options = options,
+                                enabled = !exporting,
+                                onPick = pickMusic,
+                                onRemove = {
+                                    tick()
+                                    viewModel.removeMusic()
+                                },
+                                onVolume = viewModel::setMusicVolume,
+                                onLoop = viewModel::setMusicLoop,
+                                onOffset = viewModel::setMusicOffset,
+                                onVideoVolume = viewModel::setVolume,
+                                onClose = { panel = null }
+                            )
+
+                            PanelTab.MOSH -> DatamoshPanel(
+                                mosh = options.datamosh,
+                                playheadMs = state.offsetBeforeSelectedMs + state.clip.relativePosition(positionMs),
+                                totalMs = state.totalTrimmedMs,
+                                enabled = !exporting,
+                                onEnable = {
+                                    tick()
+                                    viewModel.setDatamosh(it)
+                                },
+                                onChange = { key, transform -> viewModel.updateDatamosh(key, transform) },
+                                onClose = { panel = null }
+                            )
+
                             PanelTab.AUDIO -> AudioPanel(
                                 options = options,
                                 outputMs = state.outputDurationMs,
@@ -808,6 +942,13 @@ fun EditorScreen(
                             onSpeed = { panel = PanelTab.SPEED },
                             onAudio = { panel = PanelTab.AUDIO },
                             onSplit = splitHere,
+                            onAspect = { panel = PanelTab.ASPECT },
+                            onMusic = { panel = PanelTab.MUSIC },
+                            onDatamosh = { panel = PanelTab.MOSH },
+                            onSnapshot = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.saveSnapshot(exoPlayer.currentPosition)
+                            },
                             onReset = {
                                 viewModel.reset()
                                 exoPlayer.seekTo(0L)
