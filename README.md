@@ -42,6 +42,7 @@ A free, open source video editor for Android and Windows. Trim, merge, add text,
 | Feature | Description |
 | --- | --- |
 | Open videos | Photo Picker, file browser, camera recording, share and open-with from other apps, drag and drop in split screen |
+| Import from link | Direct video links, Google Drive, Dropbox, OneDrive, GitHub and Imgur share links, web pages that embed a video, and HLS or DASH streams |
 | Recent videos | Up to 20 items with thumbnails, last opened time and duration |
 | Sorting | Last opened, oldest opened, name A-Z, name Z-A, longest first, shortest first |
 | Layouts | List, grid and compact |
@@ -63,18 +64,32 @@ A free, open source video editor for Android and Windows. Trim, merge, add text,
 | Playback | Play, pause, loop the trimmed range, compare original colors by holding a button |
 | History | Undo and redo up to 50 steps |
 | Transform | Rotate in 90 degree steps, flip horizontally, mute |
+| Split | Cut the selected clip in two at the playhead |
+| Speed | 0.25x to 4x with presets and a slider, optional voice pitch preservation, live preview |
+| Audio | Volume from 0 to 200%, fade in and fade out, optional fade of the picture to black |
 | Filters | 9 filters plus Original, with adjustable intensity |
 | Effects | 7 stylized effects |
 | Adjust | Brightness, contrast, saturation and warmth |
 | Text | Multiple text overlays with color, size, bold, background, position, dragging and timing |
-| Merge | Join up to 10 clips in any order, each clip keeps its own trim |
+| Merge | Join up to 10 clips in any order, duplicate a clip, each clip keeps its own trim |
 | Output quality | Resolution (original, 1080p, 720p, 480p) and bitrate level (standard, high, maximum) |
 | Export | MP4 saved to the gallery, ETA, cancel, share and open, automatic retry, stall detection |
 | Menu | Categorized tool dock with status labels, badges and an all-tools grid |
 
-### Planned tools
+### Link import
 
-Speed, split, volume and fade appear in the menu as "soon".
+| Link | What Trimly does |
+| --- | --- |
+| Direct file (`.mp4`, `.webm`, `.mov`, `.mkv` and more) | Downloads it |
+| Google Drive share link | Rewrites it to the download address and handles the large file confirmation page |
+| Dropbox share link | Forces the direct download |
+| OneDrive share link | Uses the OneDrive shares API to get the file |
+| GitHub `blob` link | Rewrites it to `raw.githubusercontent.com` |
+| Imgur page or `.gifv` | Downloads the MP4 version |
+| Web page | Looks for the video in Open Graph tags, `<video>` and `<source>` tags, JSON-LD, download forms and links |
+| HLS (`.m3u8`) or DASH (`.mpd`) | Converts the stream to MP4 with Media3 Transformer at the highest quality available |
+
+Downloads resume with HTTP ranges when the connection drops, retry temporary server errors, and show speed and time left. `http` links are upgraded to `https`. Live streams and platforms that do not provide files (YouTube, TikTok, Instagram, X, Twitch and others) are detected and explained instead of failing with a generic error. Only import videos you have the right to use.
 
 ## Getting started
 
@@ -138,7 +153,11 @@ Details are in [Windows app](#windows-app).
 | Undo and redo | Arrows in the top bar |
 | Apply a filter | Style, then Filters or Effects, then pick one and set the intensity |
 | Add text | Style, then Text, then **Add text**. Drag the text on the video to move it |
-| Merge clips | Edit, then Merge, then **Add clip**. Tap a clip to trim it, use the arrows to reorder |
+| Merge clips | Edit, then Merge, then **Add clip**. Tap a clip to trim it, use the arrows to reorder, the copy button to duplicate |
+| Split | Move the playhead, then Edit, then Split |
+| Change speed | Edit, then Speed. Pick a preset or drag the slider |
+| Volume and fades | Audio, then Volume or Fade |
+| Import from a link | Home, then **Link**, or share a link to Trimly from another app |
 | Choose quality | Output, then Quality |
 | Export | **Export** in the top bar |
 
@@ -309,11 +328,19 @@ data class ExportOptions(
     val saturation: Int = 0,
     val warmth: Int = 0,
     val quality: ExportQuality = ExportQuality.STANDARD,
-    val texts: List<TextItem> = emptyList()
+    val texts: List<TextItem> = emptyList(),
+    val speed: Float = 1f,
+    val keepPitch: Boolean = true,
+    val volume: Int = 100,
+    val fadeInMs: Long = 0L,
+    val fadeOutMs: Long = 0L,
+    val fadeVideo: Boolean = false
 )
 ```
 
 - `rotationDegrees` is counterclockwise, in steps of 90.
+- `speed` ranges from 0.25 to 4. Text timings stay in source time and are scaled at export.
+- `volume` is a percentage from 0 to 200. Fades are in output time, so they keep their length at any speed.
 - `shortSide` is the user choice (1080, 720, 480). `targetHeight` is computed at export time from the source size and the rotation.
 - Adjustments range from -100 to 100.
 
@@ -574,7 +601,7 @@ FFmpeg is located in this order:
 3. A folder named `ffmpeg` next to the app
 4. The `PATH`
 
-Features on Windows: open a video, recent files, trim with a range slider, filters, effects, adjustments, rotate, flip, mute, resolution and export. Not available yet: playback inside the editor, undo and redo, merge, text, and the Android quality levels.
+Features on Windows: open a video, recent files, trim with a range slider, filters, effects, adjustments, rotate, flip, mute, speed, volume, fades, resolution and export. Not available yet: playback inside the editor, undo and redo, merge, text, and the Android quality levels.
 
 The CI workflow downloads a GPL build of FFmpeg and bundles it. Distributing that binary requires following the FFmpeg license in addition to this project license.
 
@@ -600,7 +627,9 @@ The CI workflow downloads a GPL build of FFmpeg and bundles it. Distributing tha
 
 ## Known limitations
 
-- Speed, split, volume and fade are not implemented.
+- Speed applies to the whole video, not per clip.
+- The preview plays volume up to 100%. Boosted volume is heard in the export.
+- Live streams cannot be imported.
 - Merge previews one clip at a time.
 - Text uses the system font and has no rotation.
 - HDR content is not tone mapped.
@@ -609,9 +638,11 @@ The CI workflow downloads a GPL build of FFmpeg and bundles it. Distributing tha
 
 ## Roadmap
 
-- [ ] Speed control
-- [ ] Split a clip in two
-- [ ] Volume and audio fades
+- [x] Speed control
+- [x] Split a clip in two
+- [x] Volume and audio fades
+- [x] Advanced link import
+- [ ] Speed per clip and speed ramps
 - [ ] Text styles, fonts and animations
 - [ ] Merge and text on Windows
 - [ ] Playback in the Windows editor
